@@ -336,19 +336,15 @@ export default function EditorDashboard() {
               );
             })}
           </div>
-        </div>
-      </section>
 
-      <section className="mx-auto w-full max-w-6xl px-6 pb-16">
-        <div className="grid gap-6 lg:grid-cols-[0.33fr_0.67fr]">
-          <Card className="border-slate-200/70 bg-white/80">
+          <Card className="mt-6 border-slate-200/70 bg-white/85">
             <CardHeader className="border-b border-slate-200/70">
               <CardTitle className="text-base">Editorial checklist</CardTitle>
               <p className="text-xs text-slate-500">
                 Keep each manuscript compliant before review.
               </p>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="grid gap-3 text-sm text-slate-600 md:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
                 Confirm PDF formatting and file integrity.
               </div>
@@ -360,7 +356,11 @@ export default function EditorDashboard() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </section>
 
+      <section className="mx-auto w-full max-w-6xl px-6 pb-16">
+        <div className="space-y-6">
           <Card className="border-slate-200/70 bg-white/85">
             <CardHeader className="border-b border-slate-200/70">
               <CardTitle className="text-base">Manuscript queue</CardTitle>
