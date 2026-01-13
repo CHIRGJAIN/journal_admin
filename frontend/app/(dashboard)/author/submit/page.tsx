@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,6 +52,40 @@ const itemTypes = [
   { value: "Research Data" },
   { value: "Co-submission to Data in Brief" },
   { value: "Co-submission to MethodsX" },
+];
+
+const KEYWORD_LIMIT = 5;
+
+const contributorRoleOptions = [
+  "Conceptualization",
+  "Data curation",
+  "Formal analysis",
+  "Funding acquisition",
+  "Investigation",
+  "Methodology",
+  "Project administration",
+  "Resources",
+  "Software",
+  "Supervision",
+  "Validation",
+  "Visualization",
+  "Writing - original draft",
+  "Writing - review & editing",
+];
+
+const countryOptions = [
+  "Australia",
+  "Brazil",
+  "Canada",
+  "China",
+  "France",
+  "Germany",
+  "India",
+  "Japan",
+  "South Africa",
+  "United Kingdom",
+  "United States",
+  "Other",
 ];
 
 const requiredItemTypes = itemTypes
@@ -103,6 +138,32 @@ type ManuscriptSectionId =
   | "authors"
   | "funding";
 
+type ContributorContact = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  degrees: string;
+  email: string;
+  orcid: string;
+  institution: string;
+  country: string;
+  roles: string[];
+  isCorresponding: boolean;
+};
+
+const emptyContributorContact: ContributorContact = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  degrees: "",
+  email: "",
+  orcid: "",
+  institution: "",
+  country: "",
+  roles: [],
+  isCorresponding: false,
+};
+
 const manuscriptSections: {
   id: ManuscriptSectionId;
   label: string;
@@ -139,6 +200,45 @@ const formatDate = (value: number) =>
     day: "2-digit",
     year: "numeric",
   });
+
+const parseKeywords = (value: string) =>
+  value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const buildContributorSummary = (details: ContributorContact) => {
+  const parts: string[] = [];
+  const nameParts = [details.firstName, details.middleName, details.lastName]
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (nameParts.length) {
+    parts.push(`Name: ${nameParts.join(" ")}`);
+  }
+  if (details.email.trim()) {
+    parts.push(`Email: ${details.email.trim()}`);
+  }
+  if (details.institution.trim()) {
+    parts.push(`Institution: ${details.institution.trim()}`);
+  }
+  if (details.country.trim()) {
+    parts.push(`Country: ${details.country.trim()}`);
+  }
+  if (details.degrees.trim()) {
+    parts.push(`Degrees: ${details.degrees.trim()}`);
+  }
+  if (details.orcid.trim()) {
+    parts.push(`ORCID: ${details.orcid.trim()}`);
+  }
+  if (details.roles.length) {
+    parts.push(`Roles: ${details.roles.join(", ")}`);
+  }
+  if (details.isCorresponding) {
+    parts.push("Corresponding author");
+  }
+  return parts.join(" | ");
+};
 
 const wrapPdfText = (value: string, maxLength = 90) => {
   const words = value.split(/\s+/).filter(Boolean);
@@ -223,8 +323,15 @@ export default function SubmitManuscriptPage() {
   const [title, setTitle] = useState("");
   const [abstract, setAbstract] = useState("");
   const [keywords, setKeywords] = useState("");
+  const [keywordError, setKeywordError] = useState("");
   const [authors, setAuthors] = useState("");
   const [fundingInfo, setFundingInfo] = useState("");
+  const [contributorDetails, setContributorDetails] =
+    useState<ContributorContact | null>(null);
+  const [contributorDraft, setContributorDraft] =
+    useState<ContributorContact>(emptyContributorContact);
+  const [contributorDialogOpen, setContributorDialogOpen] = useState(false);
+  const [contributorDialogError, setContributorDialogError] = useState("");
   const [selectedItemType, setSelectedItemType] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
@@ -252,6 +359,10 @@ export default function SubmitManuscriptPage() {
     [attachments]
   );
 
+  const keywordItems = useMemo(() => parseKeywords(keywords), [keywords]);
+  const keywordCount = keywordItems.length;
+  const keywordRemaining = Math.max(KEYWORD_LIMIT - keywordCount, 0);
+
   const progress = useMemo(() => {
     if (steps.length <= 1) return 0;
     return (currentStep / (steps.length - 1)) * 100;
@@ -272,9 +383,10 @@ export default function SubmitManuscriptPage() {
     return Boolean(
       title &&
         abstract &&
-        keywords &&
         authors &&
         fundingInfo &&
+        keywordItems.length > 0 &&
+        keywordItems.length <= KEYWORD_LIMIT &&
         convertedPdfUrl
     );
   }, [
@@ -284,7 +396,7 @@ export default function SubmitManuscriptPage() {
     currentStep,
     convertedPdfUrl,
     fundingInfo,
-    keywords,
+    keywordItems.length,
     title,
     abstract,
   ]);
@@ -350,6 +462,81 @@ export default function SubmitManuscriptPage() {
     () => (selectedItemType ? getAllowedExtensions(selectedItemType) : []),
     [selectedItemType]
   );
+
+  const handleKeywordsChange = (value: string) => {
+    const items = parseKeywords(value);
+    if (items.length > KEYWORD_LIMIT) {
+      setKeywordError(`You can add up to ${KEYWORD_LIMIT} keywords.`);
+      setKeywords(items.slice(0, KEYWORD_LIMIT).join(", "));
+      return;
+    }
+    setKeywordError("");
+    setKeywords(value);
+  };
+
+  const handleContributorDialogChange = (open: boolean) => {
+    if (!open) {
+      setContributorDialogError("");
+    }
+    setContributorDialogOpen(open);
+  };
+
+  const handleOpenContributorDialog = () => {
+    setContributorDraft(contributorDetails ?? emptyContributorContact);
+    setContributorDialogError("");
+    setContributorDialogOpen(true);
+  };
+
+  const updateContributorDraft = (updates: Partial<ContributorContact>) => {
+    setContributorDraft((prev) => ({ ...prev, ...updates }));
+  };
+
+  const toggleContributorRole = (role: string) => {
+    setContributorDraft((prev) => {
+      const hasRole = prev.roles.includes(role);
+      return {
+        ...prev,
+        roles: hasRole
+          ? prev.roles.filter((item) => item !== role)
+          : [...prev.roles, role],
+      };
+    });
+  };
+
+  const handleContributorSave = () => {
+    const missing: string[] = [];
+    if (!contributorDraft.firstName.trim()) {
+      missing.push("Given/First Name");
+    }
+    if (!contributorDraft.lastName.trim()) {
+      missing.push("Family/Last Name");
+    }
+    if (!contributorDraft.email.trim()) {
+      missing.push("E-mail Address");
+    }
+    if (!contributorDraft.institution.trim()) {
+      missing.push("Institution");
+    }
+    if (!contributorDraft.country.trim()) {
+      missing.push("Country or Region");
+    }
+    if (contributorDraft.roles.length === 0) {
+      missing.push("Contributor Roles");
+    }
+
+    if (missing.length) {
+      setContributorDialogError(`Please complete: ${missing.join(", ")}.`);
+      return;
+    }
+
+    const nextDetails = {
+      ...contributorDraft,
+      roles: [...contributorDraft.roles],
+    };
+    setContributorDetails(nextDetails);
+    setContributorDialogOpen(false);
+    setContributorDialogError("");
+  };
 
   const handleFileSelection = (file: File | null) => {
     if (!file) return;
@@ -465,10 +652,13 @@ export default function SubmitManuscriptPage() {
       return;
     }
 
-    const keywordsArray = keywords
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const keywordsArray = keywordItems;
+
+    if (keywordsArray.length > KEYWORD_LIMIT) {
+      setKeywordError(`You can add up to ${KEYWORD_LIMIT} keywords.`);
+      setOpenSection("keywords");
+      return;
+    }
 
     const deriveAuthor = () => {
       const stored = readStoredUser();
@@ -589,11 +779,11 @@ export default function SubmitManuscriptPage() {
     () => ({
       title: Boolean(title.trim()),
       abstract: Boolean(abstract.trim()),
-      keywords: Boolean(keywords.trim()),
+      keywords: keywordItems.length > 0 && keywordItems.length <= KEYWORD_LIMIT,
       authors: Boolean(authors.trim()),
       funding: Boolean(fundingInfo.trim()),
     }),
-    [abstract, authors, fundingInfo, keywords, title]
+    [abstract, authors, fundingInfo, keywordItems.length, title]
   );
 
   return (
@@ -1004,23 +1194,49 @@ export default function SubmitManuscriptPage() {
                                       id="keywords"
                                       value={keywords}
                                       onChange={(event) =>
-                                        setKeywords(event.target.value)
+                                        handleKeywordsChange(event.target.value)
                                       }
-                                      placeholder="Enter keywords separated by commas"
+                                      placeholder={`Enter up to ${KEYWORD_LIMIT} keywords separated by commas`}
                                       required
                                     />
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-slate-500">
+                                        {keywordCount}/{KEYWORD_LIMIT} keywords
+                                        {keywordRemaining === 0
+                                          ? " (limit reached)"
+                                          : ""}
+                                      </span>
+                                      {keywordError ? (
+                                        <span className="font-semibold text-rose-600">
+                                          {keywordError}
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </div>
                                 )}
 
                                 {section.id === "authors" && (
-                                  <div className="space-y-2">
-                                    <Label
-                                      htmlFor="authors"
-                                      className="text-sm text-slate-700"
-                                    >
-                                      Authors (required){" "}
-                                      <span className="text-rose-500">*</span>
-                                    </Label>
+                                  <div className="space-y-3">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <Label
+                                        htmlFor="authors"
+                                        className="text-sm text-slate-700"
+                                      >
+                                        Authors (required){" "}
+                                        <span className="text-rose-500">*</span>
+                                      </Label>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="rounded-full border-slate-300"
+                                        onClick={handleOpenContributorDialog}
+                                      >
+                                        {contributorDetails
+                                          ? "Edit contributor details"
+                                          : "Add contributor details"}
+                                      </Button>
+                                    </div>
                                     <Textarea
                                       id="authors"
                                       value={authors}
@@ -1031,6 +1247,16 @@ export default function SubmitManuscriptPage() {
                                       required
                                       className="min-h-24"
                                     />
+                                    {contributorDetails ? (
+                                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                                        {buildContributorSummary(contributorDetails)}
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                                        Add contributor details to capture corresponding
+                                        author information.
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
@@ -1163,6 +1389,220 @@ export default function SubmitManuscriptPage() {
           </div>
         </div>
       </section>
+
+      <Dialog open={contributorDialogOpen} onOpenChange={handleContributorDialogChange}>
+        <DialogContent className="w-[min(92vw,760px)] max-w-2xl border-slate-200 bg-white p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg bg-slate-950 px-6 py-4 text-white">
+            <DialogTitle className="text-base font-semibold">
+              Contributor details
+            </DialogTitle>
+            <span className="text-xs text-white/70">
+              Provide author contact details and contributor roles.
+            </span>
+          </div>
+
+          <div className="max-h-[70vh] space-y-6 overflow-y-auto px-6 py-5">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="contributor-first-name" className="text-sm text-slate-700">
+                  Given/First Name <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="contributor-first-name"
+                  value={contributorDraft.firstName}
+                  onChange={(event) =>
+                    updateContributorDraft({ firstName: event.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contributor-middle-name" className="text-sm text-slate-700">
+                  Middle Name
+                </Label>
+                <Input
+                  id="contributor-middle-name"
+                  value={contributorDraft.middleName}
+                  onChange={(event) =>
+                    updateContributorDraft({ middleName: event.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contributor-last-name" className="text-sm text-slate-700">
+                  Family/Last Name <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="contributor-last-name"
+                  value={contributorDraft.lastName}
+                  onChange={(event) =>
+                    updateContributorDraft({ lastName: event.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="contributor-degrees" className="text-sm text-slate-700">
+                  Academic Degree(s)
+                </Label>
+                <Input
+                  id="contributor-degrees"
+                  value={contributorDraft.degrees}
+                  onChange={(event) =>
+                    updateContributorDraft({ degrees: event.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contributor-email" className="text-sm text-slate-700">
+                  E-mail Address <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="contributor-email"
+                  type="email"
+                  value={contributorDraft.email}
+                  onChange={(event) =>
+                    updateContributorDraft({ email: event.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contributor-orcid" className="text-sm text-slate-700">
+                ORCID
+              </Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  id="contributor-orcid"
+                  value={contributorDraft.orcid}
+                  onChange={(event) =>
+                    updateContributorDraft({ orcid: event.target.value })
+                  }
+                  className="sm:flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full border-slate-300"
+                >
+                  Fetch
+                </Button>
+              </div>
+              <a
+                href="https://orcid.org/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold text-saffron-700 underline underline-offset-4"
+              >
+                What is ORCID?
+              </a>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contributor-institution" className="text-sm text-slate-700">
+                Institution <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="contributor-institution"
+                value={contributorDraft.institution}
+                onChange={(event) =>
+                  updateContributorDraft({ institution: event.target.value })
+                }
+              />
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>
+                  Start typing to display potentially matching institutions.
+                </span>
+                <button
+                  type="button"
+                  className="font-semibold text-saffron-700 underline underline-offset-4"
+                >
+                  Help
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contributor-country" className="text-sm text-slate-700">
+                Country or Region <span className="text-rose-500">*</span>
+              </Label>
+              <select
+                id="contributor-country"
+                value={contributorDraft.country}
+                onChange={(event) =>
+                  updateContributorDraft({ country: event.target.value })
+                }
+                className="h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-saffron-300"
+              >
+                <option value="">Please select from the list below</option>
+                {countryOptions.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-slate-700">
+                Contributor Roles <span className="text-rose-500">*</span>
+              </Label>
+              <p className="text-xs font-semibold text-slate-500">Instructions</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {contributorRoleOptions.map((role) => (
+                  <label key={role} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={contributorDraft.roles.includes(role)}
+                      onChange={() => toggleContributorRole(role)}
+                      className="h-4 w-4 accent-slate-900"
+                    />
+                    {role}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={contributorDraft.isCorresponding}
+                onChange={(event) =>
+                  updateContributorDraft({ isCorresponding: event.target.checked })
+                }
+                className="h-4 w-4 accent-slate-900"
+              />
+              This is the corresponding author
+            </label>
+
+            {contributorDialogError ? (
+              <p className="text-sm font-semibold text-rose-600">
+                {contributorDialogError}
+              </p>
+            ) : null}
+          </div>
+
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full border-slate-300"
+              onClick={() => setContributorDialogOpen(false)}
+            >
+              Collapse and Cancel Changes
+            </Button>
+            <Button
+              type="button"
+              className="rounded-full bg-saffron-500 text-slate-900 hover:bg-saffron-400"
+              onClick={handleContributorSave}
+            >
+              Collapse and Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
