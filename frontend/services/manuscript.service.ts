@@ -54,9 +54,24 @@ class ManuscriptService {
 
   /**
    * Get all manuscripts for current user
+   * @param statuses - Optional array of status values to filter by
    */
-  async getMyManuscripts(): Promise<Manuscript[]> {
-    return apiClient.get<Manuscript[]>('/manuscripts');
+  async getMyManuscripts(statuses?: string[]): Promise<Manuscript[]> {
+    let endpoint = '/manuscripts/my';
+    if (statuses && statuses.length > 0) {
+      const query = statuses.map(s => `status=${encodeURIComponent(s)}`).join('&');
+      endpoint += `?${query}`;
+    }
+    const res = await apiClient.get<any>(endpoint);
+    return res.data ?? res ?? [];
+  }
+
+  /**
+   * Get summary counts for current user (total, awaitingCount, decisionCount)
+   */
+  async getMySummary(): Promise<{ total: number; awaitingCount: number; decisionCount: number }> {
+    const res = await apiClient.get<any>('/manuscripts/my/summary');
+    return res.data ?? res;
   }
 
   /**

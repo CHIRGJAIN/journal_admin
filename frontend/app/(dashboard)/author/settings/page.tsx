@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authService } from "@/services/auth.service";
+import { userService } from "@/services/user.service";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, Mail } from "lucide-react";
 
@@ -30,52 +31,70 @@ export default function AuthorSettingsPage() {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactNotice, setContactNotice] = useState("");
+  const [isLoadingContact, setIsLoadingContact] = useState(false);
 
   const [unavailableRanges, setUnavailableRanges] = useState("");
   const [unavailableNote, setUnavailableNote] = useState("");
   const [unavailableNotice, setUnavailableNotice] = useState("");
+  const [isLoadingUnavailable, setIsLoadingUnavailable] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
 
   useEffect(() => {
     // Fetch user profile from API
-    authService.getProfile().then((profile) => {
+    setIsLoadingData(true);
+    authService.getProfile().then((profile: any) => {
+      console.log('Loaded profile:', profile);
+      // Load profile data directly
       setContactName(profile.name || "");
       setContactEmail(profile.email || "");
-      // Optionally set phone if available in profile
-      // setContactPhone(profile.phone || "");
-    });
-
-    // Fallback: load local unavailable info
-    const savedUnavailable = localStorage.getItem(UNAVAILABLE_STORAGE_KEY);
-    if (savedUnavailable) {
-      try {
-        const parsed = JSON.parse(savedUnavailable) as UnavailablePayload;
-        setUnavailableRanges(parsed.ranges || "");
-        setUnavailableNote(parsed.note || "");
-      } catch {
-        setUnavailableRanges("");
+      setContactPhone(profile.phone || "");
+      // Load unavailable dates if exists
+      if (profile.unavailableDates) {
+        setUnavailableRanges(profile.unavailableDates.ranges || "");
+        setUnavailableNote(profile.unavailableDates.note || "");
       }
-    }
+    }).catch(err => {
+      console.error('Failed to load profile:', err);
+    }).finally(() => {
+      setIsLoadingData(false);
+    });
   }, []);
 
-  const handleContactSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleContactSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const payload: ContactPayload = {
-      name: contactName,
-      email: contactEmail,
-      phone: contactPhone,
-    };
-    localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(payload));
-    setContactNotice("Alternate contact information saved locally.");
+    setIsLoadingContact(true);
+    setContactNotice("");
+    try {
+      await userService.updateSettings({
+        name: contactName,
+        email: contactEmail,
+        phone: contactPhone,
+      });
+      setContactNotice("Contact information saved successfully.");
+    } catch (err) {
+      setContactNotice("Failed to save. Please try again.");
+    } finally {
+      setIsLoadingContact(false);
+    }
   };
 
-  const handleUnavailableSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleUnavailableSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const payload: UnavailablePayload = {
-      ranges: unavailableRanges,
-      note: unavailableNote,
-    };
-    localStorage.setItem(UNAVAILABLE_STORAGE_KEY, JSON.stringify(payload));
-    setUnavailableNotice("Unavailable dates saved locally.");
+    setIsLoadingUnavailable(true);
+    setUnavailableNotice("");
+    try {
+      await userService.updateSettings({
+        unavailableDates: {
+          ranges: unavailableRanges,
+          note: unavailableNote,
+        },
+      });
+      setUnavailableNotice("Unavailable dates saved successfully.");
+    } catch (err) {
+      setUnavailableNotice("Failed to save. Please try again.");
+    } finally {
+      setIsLoadingUnavailable(false);
+    }
   };
 
   return (
@@ -115,6 +134,11 @@ export default function AuthorSettingsPage() {
       </section>
 
       <section className="mx-auto w-full max-w-4xl px-6 pb-16">
+        {isLoadingData ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-slate-500">Loading settings...</p>
+          </div>
+        ) : (
         <div className="space-y-8">
           <Card
             id="alternate-contact"
@@ -162,8 +186,8 @@ export default function AuthorSettingsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" className="rounded-full">
-                    Save alternate contact
+                  <Button type="submit" className="rounded-full" disabled={isLoadingContact}>
+                    {isLoadingContact ? 'Saving...' : 'Save alternate contact'}
                   </Button>
                   {contactNotice ? (
                     <span className="text-xs text-slate-500">{contactNotice}</span>
@@ -209,8 +233,8 @@ export default function AuthorSettingsPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" className="rounded-full">
-                    Save unavailable dates
+                  <Button type="submit" className="rounded-full" disabled={isLoadingUnavailable}>
+                    {isLoadingUnavailable ? 'Saving...' : 'Save unavailable dates'}
                   </Button>
                   {unavailableNotice ? (
                     <span className="text-xs text-slate-500">
@@ -222,6 +246,7 @@ export default function AuthorSettingsPage() {
             </CardContent>
           </Card>
         </div>
+        )}
       </section>
     </div>
   );

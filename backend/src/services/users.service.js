@@ -13,7 +13,20 @@ const createUser = async (data) => {
   return user;
 };
 
+const updateUserSettings = async (userId, settings) => {
+  const updateData = {};
+  if (settings.name) updateData.name = settings.name;
+  if (settings.email) updateData.email = settings.email;
+  if (settings.phone !== undefined) updateData.phone = settings.phone;
+  if (settings.unavailableDates) {
+    updateData.unavailableDates = settings.unavailableDates;
+  }
+  const user = await User.findByIdAndUpdate(userId, updateData, { new: true }).select('-password');
+  return user;
+};
+
 module.exports = {
   findByEmail,
   createUser,
+  updateUserSettings,
 };

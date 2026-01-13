@@ -18,14 +18,18 @@ class AuthService {
    * Login user
    */
   async loginUser(payload: LoginRequest): Promise<AuthResponse> {
-    return apiClient.post<AuthResponse>('/auth/login', payload);
+    const res = await apiClient.post<any>('/auth/login', payload);
+    // Backend responds with { status: true, data: { token, user } }
+    return res && res.data ? res.data : res;
   }
 
   /**
    * Get current user profile
    */
   async getProfile(): Promise<User> {
-    return apiClient.get<User>('/auth/profile', true, { withCredentials: true });
+    const res = await apiClient.get<any>('/auth/profile', true, { withCredentials: true });
+    // Backend responds with { status: true, data: user }
+    return res && res.data ? res.data : res;
   }
 
   /**

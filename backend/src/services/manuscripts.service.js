@@ -85,8 +85,27 @@ const findOnePublished = async (id) => {
     .exec();
 };
 
-const findMyManuscripts = async (authorId) =>
-  Manuscript.find({ authorId }).exec();
+const findMyManuscripts = async (authorId, statusFilter = null) => {
+  const query = { authorId };
+  if (statusFilter && Array.isArray(statusFilter) && statusFilter.length > 0) {
+    query.status = { $in: statusFilter };
+  }
+  return Manuscript.find(query).exec();
+};
+
+const getSummaryForAuthor = async (authorId) => {
+  const total = await Manuscript.countDocuments({ authorId });
+  const awaitingCount = await Manuscript.countDocuments({
+    authorId,
+    status: { $in: ['DRAFT', 'REVISION_REQUESTED'] },
+  });
+  const decisionCount = await Manuscript.countDocuments({
+    authorId,
+    status: { $in: ['ACCEPTED', 'REJECTED', 'PUBLISHED'] },
+  });
+
+  return { total, awaitingCount, decisionCount };
+};
 
 const findOne = async (id) => {
   if (!isValidObjectId(id)) {
@@ -109,6 +128,7 @@ module.exports = {
   getTypes,
   findOnePublished,
   findMyManuscripts,
+  getSummaryForAuthor,
   findOne,
   updateStatus,
 };

@@ -65,17 +65,20 @@ export default function AuthorQueuePage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await manuscriptService.getMyManuscripts();
-        if (response.manuscripts && Array.isArray(response.manuscripts)) {
-          setManuscripts(response.manuscripts);
+        // Pass active view's statuses to backend for filtering
+        const statuses = activeView.statuses.length > 0 ? activeView.statuses : undefined;
+        const response = await manuscriptService.getMyManuscripts(statuses);
+        // Response is already unwrapped to array by service
+        if (Array.isArray(response)) {
+          setManuscripts(response);
         } else {
           setManuscripts([]);
         }
       } catch (err) {
         if (err instanceof ApiError) {
-          console.error("API Error:", err.message);
+          setError(err.message);
         } else {
-          console.error("Error fetching manuscripts:", err);
+          setError('Failed to load manuscripts');
         }
         setManuscripts([]);
       } finally {
@@ -83,7 +86,7 @@ export default function AuthorQueuePage() {
       }
     };
     fetchManuscripts();
-  }, []);
+  }, [viewKey, activeView.statuses]);
 
   const statusCounts = useMemo(() => {
     return manuscripts.reduce<Record<string, number>>((acc, manuscript) => {
@@ -99,14 +102,8 @@ export default function AuthorQueuePage() {
     return statuses.reduce((sum, status) => sum + (statusCounts[status] ?? 0), 0);
   };
 
-  const filteredManuscripts = useMemo(() => {
-    const statuses = activeView.statuses;
-    if (!statuses.length) return manuscripts;
-
-    return manuscripts.filter((manuscript) =>
-      statuses.includes((manuscript.status || "").toUpperCase() as ManuscriptStatus)
-    );
-  }, [activeView.statuses, manuscripts]);
+  // Backend already filters, so just use manuscripts directly
+  const filteredManuscripts = manuscripts;
 
   const filterGroups = useMemo(() => {
     const queueGroups = dashboardSections.map((section) => ({
@@ -234,7 +231,25 @@ export default function AuthorQueuePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredManuscripts.length === 0 ? (
+                  {loading ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="py-10 text-center text-sm text-slate-500"
+                      >
+                        Loading manuscripts...
+                      </TableCell>
+                    </TableRow>
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="py-10 text-center text-sm text-red-600"
+                      >
+                        {error}
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredManuscripts.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={4}

@@ -21,6 +21,7 @@ router.post('/create', authenticate, upload.fields([
 ]), asyncHandler(manuscriptsController.create));
 router.get('/all', authenticate, asyncHandler(manuscriptsController.findAll));
 router.get('/my', authenticate, asyncHandler(manuscriptsController.findMine));
+router.get('/my/summary', authenticate, asyncHandler(manuscriptsController.getSummary));
 
 // Update manuscript status
 router.patch('/:id/status', authenticate, asyncHandler(manuscriptsController.updateStatus));

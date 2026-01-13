@@ -41,6 +41,14 @@ class UserService {
   async deleteAccount(): Promise<{ message: string }> {
     return apiClient.delete<{ message: string }>('/users/profile');
   }
+
+  /**
+   * Update user settings (profile fields, unavailableDates)
+   */
+  async updateSettings(settings: { name?: string; email?: string; phone?: string; unavailableDates?: { ranges: string; note: string } }): Promise<any> {
+    const res = await apiClient.put<any>('/auth/settings', settings);
+    return res.data ?? res;
+  }
 }
 
 export const userService = new UserService();

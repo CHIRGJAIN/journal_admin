@@ -8,7 +8,7 @@ const extractToken = (req) => {
   }
 
   const authHeader = req.headers.authorization || '';
-  console.log("authHeader",req.headers)
+
   const [scheme, token] = authHeader.split(' ');
   if (scheme === 'Bearer' && token) {
     return token;
@@ -29,6 +29,8 @@ const authenticate = (req, res, next) => {
       userId: payload.sub,
       email: payload.email,
       roles: payload.roles,
+      name: payload.name,
+      phone: payload.phone,
     };
     return next();
   } catch (error) {

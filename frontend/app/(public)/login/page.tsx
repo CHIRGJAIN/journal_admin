@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { authService } from "@/services/auth.service";
 import { ArrowLeft, ArrowRight, BookOpen, HelpCircle, ShieldCheck, Sparkles, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,10 @@ const assistance = [
 export default function ManuscriptLoginPage() {
   const [remember, setRemember] = useState(true);
   const [role, setRole] = useState<typeof roles[number]["key"]>("author");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   const roleCopy = useMemo(() => {
@@ -52,17 +57,32 @@ export default function ManuscriptLoginPage() {
     }
   }, [role]);
 
-  const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const payload = { email, password, role };
+      const response = await authService.loginUser(payload as any);
+      // response: { token, user }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', response.token);
+        localStorage.setItem('user', JSON.stringify(response.user));
+      }
 
-    const roleRoutes: Record<typeof role, string> = {
-      author: "/author",
-      reviewer: "/reviewer",
-      editor: "/editor",
-      publisher: "/publisher",
-    };
+      const roleRoutes: Record<typeof role, string> = {
+        author: '/author',
+        reviewer: '/reviewer',
+        editor: '/editor',
+        publisher: '/publisher',
+      };
 
-    router.push(roleRoutes[role] ?? "/author");
+      router.push(roleRoutes[role] ?? '/author');
+    } catch (err: any) {
+      setError(err?.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -102,6 +122,8 @@ export default function ManuscriptLoginPage() {
                   <Input
                     id="username"
                     type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
                     className="h-11 rounded-full border-saffron-100 focus-visible:ring-saffron-300"
                   />
@@ -111,6 +133,8 @@ export default function ManuscriptLoginPage() {
                   <Input
                     id="password"
                     type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
                     className="h-11 rounded-full border-saffron-100 focus-visible:ring-saffron-300"
                   />
@@ -129,12 +153,14 @@ export default function ManuscriptLoginPage() {
                     Forgot password?
                   </a>
                 </div>
+                {error && <div className="text-sm text-red-600">{error}</div>}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     type="submit"
                     className="w-full rounded-full bg-saffron-500 text-slate-900 shadow-sm hover:bg-saffron-400"
+                    disabled={isLoading}
                   >
-                    Continue to portal
+                    {isLoading ? 'Signing in…' : 'Continue to portal'}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                   <Button

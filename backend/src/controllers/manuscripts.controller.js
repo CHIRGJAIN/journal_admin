@@ -118,8 +118,15 @@ const findAll = async (req, res) => {
 };
 
 const findMine = async (req, res) => {
-  const manuscripts = await manuscriptsService.findMyManuscripts(req.user.userId);
+  const statusFilter = req.query.status ? (Array.isArray(req.query.status) ? req.query.status : [req.query.status]) : null;
+  const manuscripts = await manuscriptsService.findMyManuscripts(req.user.userId, statusFilter);
   res.json({ status: true, data: manuscripts });
+};
+
+const getSummary = async (req, res) => {
+  const authorId = req.user.userId;
+  const summary = await manuscriptsService.getSummaryForAuthor(authorId);
+  res.json({ status: true, data: summary });
 };
 
 const findOne = async (req, res) => {
@@ -143,6 +150,7 @@ module.exports = {
   create,
   findAll,
   findMine,
+  getSummary,
   findOne,
   updateStatus,
 };

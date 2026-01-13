@@ -47,6 +47,7 @@ import {
   type ManuscriptStatus,
   type QueueViewKey,
 } from "@/lib/author-portal";
+import { manuscriptService } from '@/services';
 
 type ManuscriptRecord = {
   id: string;
@@ -108,24 +109,31 @@ const resolveDraftTitle = (value?: string) => {
 
 export default function AuthorDashboard() {
   const [manuscripts, setManuscripts] = useState<ManuscriptRecord[]>([]);
+  const [isLoadingManuscripts, setIsLoadingManuscripts] = useState(false);
+  const [summary, setSummary] = useState({ total: 0, awaitingCount: 0, decisionCount: 0 });
 
   useEffect(() => {
     const fetchManuscripts = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/manuscripts/my`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      if (res.ok) {
-        const data = (await res.json()) as ManuscriptRecord[];
-        setManuscripts(data);
+      setIsLoadingManuscripts(true);
+      try {
+        const data = await manuscriptService.getMyManuscripts();
+        setManuscripts(data || []);
+      } catch (err) {
+        // ignore errors for now
+      } finally {
+        setIsLoadingManuscripts(false);
       }
     };
     fetchManuscripts();
+    const fetchSummary = async () => {
+      try {
+        const data = await manuscriptService.getMySummary();
+        setSummary(data);
+      } catch (err) {
+        // ignore
+      }
+    };
+    fetchSummary();
   }, []);
 
   const statusCounts = useMemo(() => {
@@ -137,24 +145,12 @@ export default function AuthorDashboard() {
   }, [manuscripts]);
 
   const summaryStats = useMemo(() => {
-    const awaitingAction: ManuscriptStatus[] = ["DRAFT", "REVISION_REQUESTED"];
-    const decisionStatuses: ManuscriptStatus[] = queueViews.decisions.statuses;
-
-    const awaitingCount = awaitingAction.reduce(
-      (sum, status) => sum + (statusCounts[status] ?? 0),
-      0
-    );
-    const decisionCount = decisionStatuses.reduce(
-      (sum, status) => sum + (statusCounts[status] ?? 0),
-      0
-    );
-
     return [
-      { label: "Total manuscripts", value: manuscripts.length },
-      { label: "Awaiting your action", value: awaitingCount },
-      { label: "Decisions completed", value: decisionCount },
+      { label: 'Total manuscripts', value: summary.total },
+      { label: "Awaiting your action", value: summary.awaitingCount },
+      { label: "Decisions completed", value: summary.decisionCount },
     ];
-  }, [manuscripts.length, statusCounts]);
+  }, [summary]);
 
   const getCountForView = (view?: QueueViewKey) => {
     if (!view) return null;
@@ -390,15 +386,26 @@ export default function AuthorDashboard() {
                 </TableHeader>
                 <TableBody>
                   {sortedManuscripts.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={4}
-                        className="py-10 text-center text-sm text-slate-500"
-                      >
-                        No manuscripts yet. Start a new submission to populate this
-                        dashboard.
-                      </TableCell>
-                    </TableRow>
+                    isLoadingManuscripts ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="py-10 text-center text-sm text-slate-500"
+                        >
+                          Loading manuscripts...
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="py-10 text-center text-sm text-slate-500"
+                        >
+                          No manuscripts yet. Start a new submission to populate this
+                          dashboard.
+                        </TableCell>
+                      </TableRow>
+                    )
                   ) : (
                     sortedManuscripts.map((manuscript) => {
                       const normalizedStatus = manuscript.status

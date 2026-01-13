@@ -19,22 +19,38 @@ const validateUser = async (email, password) => {
   return result;
 };
 
-const login = async (user) => {
-  const payload = {
+const login = async (user, role) => {
+  const normalizedRoles = Array.isArray(user.roles)
+    ? user.roles
+    : user.roles
+    ? [user.roles]
+    : [];
+
+  const jwtPayload = {
     email: user.email,
-    sub: user.id,
-    roles: user.roles,
+    sub: user._id || user.id,
+    roles: normalizedRoles,
+    role: role || normalizedRoles[0],
+    name: user.name,
+    phone: user.phone,
   };
 
+  const token = jwt.sign(jwtPayload, config.jwtSecret, {
+    expiresIn: config.jwtExpiresIn,
+  });
+
   return {
-    access_token: jwt.sign(payload, config.jwtSecret, {
-      expiresIn: config.jwtExpiresIn,
-    }),
+    token,
     user: {
+      id: user._id || user.id,
       email: user.email,
       name: user.name,
-      roles: user.roles,
+      phone: user.phone,
+      roles: normalizedRoles,
+      role: role || normalizedRoles[0],
       expertise: user.expertise,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     },
   };
 };
