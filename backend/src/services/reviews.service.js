@@ -3,6 +3,12 @@ const { Manuscript } = require('../models/manuscript.model');
 const { HttpError } = require('../utils/http-error');
 const { isValidObjectId } = require('../utils/object-id');
 
+const decisionStatusMap = {
+  ACCEPT: 'ACCEPTED',
+  REJECT: 'REJECTED',
+  REVISE: 'REVISION_REQUESTED',
+};
+
 const assignReviewer = async (manuscriptId, reviewerId) => {
   if (!isValidObjectId(manuscriptId)) {
     throw new HttpError(400, 'Manuscript not found');
@@ -12,6 +18,8 @@ const assignReviewer = async (manuscriptId, reviewerId) => {
   if (!manuscript) {
     throw new HttpError(400, 'Manuscript not found');
   }
+
+  await Manuscript.findByIdAndUpdate(manuscriptId, { status: 'UNDER_REVIEW' }).exec();
 
   return Review.create({
     manuscriptId,
@@ -32,18 +40,11 @@ const submitReview = async (reviewId, content, decision) => {
     throw new HttpError(404, 'Review not found');
   }
 
-  // Map decision to manuscript status
-  const decisionStatusMap = {
-    ACCEPT: 'ACCEPTED',
-    REJECT: 'REJECTED',
-    REVISE: 'REVISION_REQUESTED',
-  };
-
-  const newStatus = decisionStatusMap[decision];
-  if (newStatus && review.manuscriptId) {
+  const nextStatus = decisionStatusMap[decision];
+  if (nextStatus && review.manuscriptId) {
     await Manuscript.findByIdAndUpdate(
       review.manuscriptId,
-      { status: newStatus },
+      { status: nextStatus },
       { new: true }
     ).exec();
   }

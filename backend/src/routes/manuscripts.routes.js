@@ -3,6 +3,7 @@ const { asyncHandler } = require('../utils/async-handler');
 const manuscriptsController = require('../controllers/manuscripts.controller');
 
 const { authenticate } = require('../middleware/auth');
+const { authorizeRoles } = require('../middleware/authorize');
 const upload = require('../middleware/multer');
 
 const router = express.Router();
@@ -24,7 +25,20 @@ router.get('/my', authenticate, asyncHandler(manuscriptsController.findMine));
 router.get('/my/summary', authenticate, asyncHandler(manuscriptsController.getSummary));
 
 // Update manuscript status
-router.patch('/:id/status', authenticate, asyncHandler(manuscriptsController.updateStatus));
+router.patch(
+  '/:id/status',
+  authenticate,
+  authorizeRoles('publisher', 'admin'),
+  asyncHandler(manuscriptsController.updateStatus)
+);
+
+router.patch(
+  '/:id',
+  authenticate,
+  authorizeRoles('editor', 'publisher', 'admin'),
+  upload.single('content'),
+  asyncHandler(manuscriptsController.update)
+);
 
 router.get('/:id', asyncHandler(manuscriptsController.findOne));
 

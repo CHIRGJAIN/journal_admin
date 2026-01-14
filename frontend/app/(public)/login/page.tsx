@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { authService } from "@/services/auth.service";
 import { ArrowLeft, ArrowRight, BookOpen, HelpCircle, ShieldCheck, Sparkles, User } from "lucide-react";
-
+import { authService } from "@/services/auth.service";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,10 +38,10 @@ const assistance = [
 export default function ManuscriptLoginPage() {
   const [remember, setRemember] = useState(true);
   const [role, setRole] = useState<typeof roles[number]["key"]>("author");
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
+  const [message, setMessage] = useState("");
   const router = useRouter();
 
   const roleCopy = useMemo(() => {
@@ -58,31 +57,46 @@ export default function ManuscriptLoginPage() {
     }
   }, [role]);
 
+  const noticeStyles =
+    status === "error"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : "border-slate-200 bg-slate-50 text-slate-600";
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError('');
-    setIsLoading(true);
+    setMessage("");
+    setStatus("submitting");
+
+    if (!email.trim() || !password) {
+      setStatus("error");
+      setMessage("Enter your email and password to continue.");
+      return;
+    }
+
     try {
-      const payload = { email, password, role };
-      const response = await authService.loginUser(payload as any);
-      // response: { token, user }
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(response.user));
+      const response = await authService.loginUser({
+        email: email.trim(),
+        password,
+        role,
+      } as any);
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("token", response.token);
+        localStorage.setItem("user", JSON.stringify(response.user));
       }
 
       const roleRoutes: Record<typeof role, string> = {
-        author: '/author',
-        reviewer: '/reviewer',
-        editor: '/editor',
-        publisher: '/publisher',
+        author: "/author",
+        reviewer: "/reviewer",
+        editor: "/editor",
+        publisher: "/publisher",
       };
 
-      router.push(roleRoutes[role] ?? '/author');
-    } catch (err: any) {
-      setError(err?.message || 'Login failed');
-    } finally {
-      setIsLoading(false);
+      router.push(roleRoutes[role] ?? "/author");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Login failed. Please try again.";
+      setStatus("error");
+      setMessage(errorMessage);
     }
   };
 
@@ -124,7 +138,7 @@ export default function ManuscriptLoginPage() {
                     id="username"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@example.com"
                     className="h-11 rounded-full border-saffron-100 focus-visible:ring-saffron-300"
                   />
@@ -135,11 +149,16 @@ export default function ManuscriptLoginPage() {
                     id="password"
                     type="password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
                     className="h-11 rounded-full border-saffron-100 focus-visible:ring-saffron-300"
                   />
                 </div>
+                {message ? (
+                  <div className={`rounded-2xl border px-4 py-3 text-xs ${noticeStyles}`}>
+                    {message}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between text-sm text-slate-600">
                   <label className="flex items-center gap-2">
                     <input
@@ -154,14 +173,13 @@ export default function ManuscriptLoginPage() {
                     Forgot password?
                   </a>
                 </div>
-                {error && <div className="text-sm text-red-600">{error}</div>}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     type="submit"
                     className="w-full rounded-full bg-saffron-500 text-slate-900 shadow-sm hover:bg-saffron-400"
-                    disabled={isLoading}
+                    disabled={status === "submitting"}
                   >
-                    {isLoading ? 'Signing in…' : 'Continue to portal'}
+                    {status === "submitting" ? "Signing in..." : "Continue to portal"}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                   <Button

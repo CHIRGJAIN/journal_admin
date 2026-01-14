@@ -1,31 +1,29 @@
 const express = require('express');
-const blogController = require('../controllers/blog.controller');
-
+const editorialBoardController = require('../controllers/editorialBoard.controller');
 const { authenticate } = require('../middleware/auth');
 const { authorizeRoles } = require('../middleware/authorize');
 const { asyncHandler } = require('../utils/async-handler');
 const router = express.Router();
 
 router.post(
-  '/',
+  '/create',
   authenticate,
   authorizeRoles('publisher', 'admin'),
-  asyncHandler(blogController.createBlog)
+  asyncHandler(editorialBoardController.createEditorialBoard)
 );
-router.get('/', asyncHandler(blogController.getBlogs));
-router.get('/slug/:slug', asyncHandler(blogController.getBlogBySlug));
-router.get('/:id', asyncHandler(blogController.getBlog));
+router.get('/', asyncHandler(editorialBoardController.getEditorialBoards));
+router.get('/:id', asyncHandler(editorialBoardController.getEditorialBoard));
 router.put(
-  '/:id',
+  '/update/:id',
   authenticate,
   authorizeRoles('publisher', 'admin'),
-  asyncHandler(blogController.updateBlog)
+  asyncHandler(editorialBoardController.updateEditorialBoard)
 );
 router.delete(
   '/:id',
   authenticate,
   authorizeRoles('publisher', 'admin'),
-  asyncHandler(blogController.deleteBlog)
+  asyncHandler(editorialBoardController.deleteEditorialBoard)
 );
 
 module.exports = router;

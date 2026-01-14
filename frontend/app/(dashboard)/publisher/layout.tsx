@@ -7,7 +7,7 @@ export default function PublisherLayout({
 }>) {
   return (
     <div className="min-h-screen">
-      <AuthorDashboardNav basePath="/publisher" portalSubtitle="Publisher Portal" />
+      <AuthorDashboardNav basePath="/publisher" portalSubtitle="Admin Portal" />
       <main>{children}</main>
     </div>
   );

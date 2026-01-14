@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BadgeCheck, ClipboardCheck, ExternalLink, FileText } from "lucide-react";
+import Link from "next/link";
+import {
+  BadgeCheck,
+  ClipboardCheck,
+  ExternalLink,
+  FileText,
+  RefreshCw,
+  ShieldCheck,
+  UserCheck,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
-import { manuscriptService } from "@/services";
+import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
+import { apiBase } from "@/lib/apiBase";
+import { safeParseJson } from "@/lib/safe-json";
 
 type ManuscriptRecord = {
   id: string;
@@ -32,7 +42,16 @@ type ManuscriptRecord = {
   };
 };
 
-const statusTones: Record<string, string> = {
+type UserRecord = {
+  id: string;
+  name: string;
+  email: string;
+  roles: string;
+  status?: string;
+  createdAt?: string;
+};
+
+const manuscriptStatusTones: Record<string, string> = {
   DRAFT: "border-slate-200 bg-slate-50 text-slate-600",
   SUBMITTED: "border-saffron-200 bg-saffron-50 text-saffron-700",
   UNDER_REVIEW: "border-sky-200 bg-sky-50 text-sky-700",
@@ -42,32 +61,23 @@ const statusTones: Record<string, string> = {
   PUBLISHED: "border-indigo-200 bg-indigo-50 text-indigo-700",
 };
 
-const LOCAL_MANUSCRIPTS_KEY = "localManuscripts";
-const productionStatuses = new Set(["ACCEPTED", "PUBLISHED"]);
-
-const readLocalManuscripts = (): ManuscriptRecord[] => {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(LOCAL_MANUSCRIPTS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+const userStatusTones: Record<string, string> = {
+  PENDING: "border-amber-200 bg-amber-50 text-amber-700",
+  APPROVED: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  REJECTED: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
-const mergeManuscripts = (
-  primary: ManuscriptRecord[],
-  secondary: ManuscriptRecord[]
-) => {
-  const merged = new Map<string, ManuscriptRecord>();
-  secondary.forEach((item) => merged.set(item.id, item));
-  primary.forEach((item) => merged.set(item.id, item));
-  return Array.from(merged.values());
-};
+const productionStatuses = new Set(["ACCEPTED"]);
+const roleOptions = ["author", "reviewer", "editor", "publisher"] as const;
 
-const normalizeManuscripts = (items: ManuscriptRecord[]) =>
-  items.map((item) => {
+const normalizeManuscripts = (payload: unknown): ManuscriptRecord[] => {
+  const items = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object" && Array.isArray((payload as any).data)
+    ? (payload as any).data
+    : [];
+
+  return items.map((item: ManuscriptRecord) => {
     const fallbackId =
       (item as any)._id ||
       item.id ||
@@ -81,6 +91,15 @@ const normalizeManuscripts = (items: ManuscriptRecord[]) =>
       status: (item.status || "").toUpperCase(),
     };
   });
+};
+
+const normalizeUsers = (payload: unknown): UserRecord[] => {
+  if (Array.isArray(payload)) return payload as UserRecord[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as any).data)) {
+    return (payload as any).data as UserRecord[];
+  }
+  return [];
+};
 
 const formatDate = (value?: string) =>
   value
@@ -93,42 +112,94 @@ const formatDate = (value?: string) =>
 
 export default function PublisherDashboard() {
   const [manuscripts, setManuscripts] = useState<ManuscriptRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUsersLoading, setIsUsersLoading] = useState(true);
+  const [manuscriptError, setManuscriptError] = useState("");
+  const [userNotice, setUserNotice] = useState("");
+  const [userError, setUserError] = useState("");
+
   const [activeManuscript, setActiveManuscript] =
     useState<ManuscriptRecord | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [publishStatus, setPublishStatus] = useState<"idle" | "publishing">("idle");
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [publishStatus, setPublishStatus] =
+    useState<"idle" | "publishing">("idle");
   const [publishError, setPublishError] = useState("");
 
-  useEffect(() => {
-    const fetchManuscripts = async () => {
-      const token = localStorage.getItem("token");
-      const localManuscripts = readLocalManuscripts();
+  const loadManuscripts = async () => {
+    setIsLoading(true);
+    setManuscriptError("");
 
-      if (!token) {
-        const normalized = normalizeManuscripts(localManuscripts);
-        setManuscripts(normalized);
-        setIsLoading(false);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setManuscripts([]);
+      setManuscriptError("Sign in again to load manuscripts.");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/manuscripts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setManuscriptError(
+          payload?.message || "Unable to load manuscripts. Try again."
+        );
+        setManuscripts([]);
         return;
       }
+      setManuscripts(normalizeManuscripts(payload));
+    } catch {
+      setManuscriptError("Unable to load manuscripts. Try again.");
+      setManuscripts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      try {
-        // Use manuscriptService to get all manuscripts
-        const response = await manuscriptService.getAll({ page: 1, limit: 200 });
-        const remoteManuscripts = normalizeManuscripts(response.data || []);
-        const merged = mergeManuscripts(remoteManuscripts, normalizeManuscripts(localManuscripts));
-        setManuscripts(merged);
-      } catch (error) {
-        console.error("Error fetching manuscripts:", error);
-        const normalized = normalizeManuscripts(localManuscripts);
-        setManuscripts(normalized);
-      } finally {
-        setIsLoading(false);
+  const loadUsers = async () => {
+    setIsUsersLoading(true);
+    setUserError("");
+    setUserNotice("");
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setUsers([]);
+      setUserError("Sign in again to load users.");
+      setIsUsersLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/users`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setUserError(payload?.message || "Unable to load users.");
+        setUsers([]);
+        return;
       }
-    };
+      setUsers(normalizeUsers(payload));
+    } catch {
+      setUserError("Unable to load users.");
+      setUsers([]);
+    } finally {
+      setIsUsersLoading(false);
+    }
+  };
 
-    fetchManuscripts();
+  useEffect(() => {
+    loadManuscripts();
+    loadUsers();
   }, []);
+
+  const pendingUsers = useMemo(
+    () => users.filter((user) => (user.status || "PENDING") === "PENDING"),
+    [users]
+  );
 
   const statusCounts = useMemo(() => {
     return manuscripts.reduce<Record<string, number>>((acc, manuscript) => {
@@ -141,22 +212,22 @@ export default function PublisherDashboard() {
   const summaryStats = useMemo(
     () => [
       {
-        label: "Ready for production",
-        value: statusCounts.ACCEPTED ?? 0,
+        label: "Pending approvals",
+        value: pendingUsers.length,
+        icon: UserCheck,
+      },
+      {
+        label: "Under review",
+        value: statusCounts.UNDER_REVIEW ?? 0,
         icon: ClipboardCheck,
       },
       {
-        label: "Published",
-        value: statusCounts.PUBLISHED ?? 0,
+        label: "Ready to publish",
+        value: statusCounts.ACCEPTED ?? 0,
         icon: BadgeCheck,
       },
-      {
-        label: "In production",
-        value: (statusCounts.ACCEPTED ?? 0) + (statusCounts.PUBLISHED ?? 0),
-        icon: FileText,
-      },
     ],
-    [statusCounts]
+    [pendingUsers.length, statusCounts]
   );
 
   const productionQueue = useMemo(() => {
@@ -171,30 +242,101 @@ export default function PublisherDashboard() {
       });
   }, [manuscripts]);
 
-  const resetDialogState = () => {
+  const sortedManuscripts = useMemo(() => {
+    return [...manuscripts].sort((a, b) => {
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [manuscripts]);
+
+  const handleUserStatus = async (userId: string, status: string) => {
+    setUserError("");
+    setUserNotice("");
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setUserError("Sign in again to update users.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/users/${userId}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
+      });
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setUserError(payload?.message || "Unable to update user status.");
+        return;
+      }
+      const updated = payload?.data ?? payload;
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? { ...user, status: updated?.status ?? status }
+            : user
+        )
+      );
+      setUserNotice("User status updated.");
+    } catch {
+      setUserError("Unable to update user status.");
+    }
+  };
+
+  const handleUserRole = async (userId: string, roles: string) => {
+    setUserError("");
+    setUserNotice("");
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setUserError("Sign in again to update users.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/users/${userId}/roles`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ roles }),
+      });
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setUserError(payload?.message || "Unable to update user role.");
+        return;
+      }
+      const updated = payload?.data ?? payload;
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId ? { ...user, roles: updated?.roles ?? roles } : user
+        )
+      );
+      setUserNotice("User role updated.");
+    } catch {
+      setUserError("Unable to update user role.");
+    }
+  };
+
+  const handleOpenPublishDialog = (manuscript: ManuscriptRecord) => {
+    setActiveManuscript(manuscript);
     setPublishError("");
     setPublishStatus("idle");
-  };
-
-  const handleOpenDialog = (manuscript: ManuscriptRecord) => {
-    setActiveManuscript(manuscript);
-    resetDialogState();
-    setDialogOpen(true);
-  };
-
-  const handleDialogChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setActiveManuscript(null);
-      resetDialogState();
-    }
+    setPublishDialogOpen(true);
   };
 
   const handlePublish = async () => {
     if (!activeManuscript) return;
+
     const token = localStorage.getItem("token");
     if (!token) {
-      setPublishError("Sign in again to continue.");
+      setPublishError("Sign in again to publish this manuscript.");
       return;
     }
 
@@ -202,21 +344,41 @@ export default function PublisherDashboard() {
     setPublishError("");
 
     try {
-      // Use manuscriptService to update manuscript status
-      await manuscriptService.updateManuscriptStatus(
-        activeManuscript.id,
-        "PUBLISHED"
+      const res = await fetch(
+        `${apiBase}/manuscripts/${activeManuscript.id}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: "PUBLISHED" }),
+        }
       );
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setPublishError(payload?.message || "Unable to publish this manuscript.");
+        setPublishStatus("idle");
+        return;
+      }
 
+      const updated = payload?.data ?? payload;
+      const updatedAt = updated?.updatedAt ?? new Date().toISOString();
       setManuscripts((prev) =>
         prev.map((item) =>
-          item.id === activeManuscript.id ? { ...item, status: "PUBLISHED" } : item
+          item.id === activeManuscript.id
+            ? {
+                ...item,
+                status: updated?.status ?? "PUBLISHED",
+                updatedAt,
+                contentUrl: updated?.contentUrl ?? item.contentUrl,
+              }
+            : item
         )
       );
-      setDialogOpen(false);
-    } catch (error) {
-      console.error("Error publishing manuscript:", error);
-      setPublishError("Unable to publish the manuscript. Try again.");
+      setPublishDialogOpen(false);
+    } catch {
+      setPublishError("Unable to publish this manuscript.");
     } finally {
       setPublishStatus("idle");
     }
@@ -230,7 +392,7 @@ export default function PublisherDashboard() {
     (typeof activeManuscript?.status === "string" ? activeManuscript.status : undefined) ??
     "Unknown";
   const activeStatusTone =
-    statusTones[activeStatus] ?? "border-slate-200 bg-slate-50 text-slate-600";
+    manuscriptStatusTones[activeStatus] ?? "border-slate-200 bg-slate-50 text-slate-600";
   const canPublish = activeStatus === "ACCEPTED";
 
   return (
@@ -244,14 +406,13 @@ export default function PublisherDashboard() {
         <div className="relative mx-auto w-full max-w-6xl px-6 py-10 md:py-12">
           <div className="space-y-3">
             <p className="text-xs uppercase tracking-[0.35em] text-slate-500">
-              Publisher portal
+              Admin portal
             </p>
             <h1 className="font-display text-3xl text-slate-900 md:text-4xl">
-              Publisher dashboard
+              Publisher admin dashboard
             </h1>
             <p className="max-w-2xl text-sm text-slate-600 md:text-base">
-              Prepare accepted manuscripts for release, finalize metadata, and
-              publish each issue on schedule.
+              Approve users, oversee manuscripts, and manage publishing workflows.
             </p>
           </div>
 
@@ -277,7 +438,379 @@ export default function PublisherDashboard() {
       </section>
 
       <section className="mx-auto w-full max-w-6xl px-6 pb-16">
-        <div className="grid gap-6 lg:grid-cols-[0.33fr_0.67fr]">
+        <div className="grid gap-6 lg:grid-cols-[0.34fr_0.66fr]">
+          <Card className="border-slate-200/70 bg-white/80">
+            <CardHeader className="border-b border-slate-200/70">
+              <CardTitle className="text-base">Admin checklist</CardTitle>
+              <p className="text-xs text-slate-500">
+                Keep the portal tidy and compliant.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-slate-600">
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                Review pending registrations and assign roles.
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                Monitor manuscript status changes and reviewer activity.
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                Publish accepted manuscripts only after metadata checks.
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200/70 bg-white/85">
+            <CardHeader className="border-b border-slate-200/70">
+              <CardTitle className="text-base">Quick actions</CardTitle>
+              <p className="text-xs text-slate-500">
+                Jump to the most common admin tasks.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+              <Link
+                href="#user-approvals"
+                className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:border-saffron-200"
+              >
+                <ShieldCheck className="h-4 w-4 text-saffron-600" />
+                Approve users
+              </Link>
+              <Link
+                href="#manuscript-control"
+                className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:border-saffron-200"
+              >
+                <FileText className="h-4 w-4 text-saffron-600" />
+                Review status
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card id="user-approvals" className="mt-8 border-slate-200/70 bg-white/85">
+          <CardHeader className="border-b border-slate-200/70">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Pending registrations</CardTitle>
+                <p className="text-xs text-slate-500">
+                  Approve or reject new users before they access the portal.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full border-slate-300"
+                onClick={loadUsers}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableCaption>
+                {isUsersLoading
+                  ? "Loading registrations..."
+                  : `${pendingUsers.length} pending approval(s).`}
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Submitted</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isUsersLoading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      Loading registrations...
+                    </TableCell>
+                  </TableRow>
+                ) : pendingUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      No pending registrations right now.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pendingUsers.map((user) => {
+                    const status = (user.status || "PENDING").toUpperCase();
+                    const tone =
+                      userStatusTones[status] ??
+                      "border-slate-200 bg-slate-50 text-slate-600";
+
+                    return (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">
+                          {user.name}
+                        </TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell className="capitalize">{user.roles}</TableCell>
+                        <TableCell>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              tone
+                            )}
+                          >
+                            {status}
+                          </span>
+                        </TableCell>
+                        <TableCell>{formatDate(user.createdAt)}</TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onClick={() => handleUserStatus(user.id, "APPROVED")}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full border-rose-200 text-rose-600"
+                            onClick={() => handleUserStatus(user.id, "REJECTED")}
+                          >
+                            Reject
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+            {userNotice ? (
+              <p className="mt-3 text-xs font-semibold text-emerald-600">
+                {userNotice}
+              </p>
+            ) : null}
+            {userError ? (
+              <p className="mt-3 text-xs font-semibold text-rose-600">
+                {userError}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="mt-8 border-slate-200/70 bg-white/85">
+          <CardHeader className="border-b border-slate-200/70">
+            <CardTitle className="text-base">User directory</CardTitle>
+            <p className="text-xs text-slate-500">
+              Update roles and approvals for existing users.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableCaption>
+                {isUsersLoading
+                  ? "Loading users..."
+                  : `${users.length} user(s) in the portal.`}
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Update</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isUsersLoading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      Loading users...
+                    </TableCell>
+                  </TableRow>
+                ) : users.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      No users found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  users.map((user) => {
+                    const status = (user.status || "PENDING").toUpperCase();
+                    const tone =
+                      userStatusTones[status] ??
+                      "border-slate-200 bg-slate-50 text-slate-600";
+
+                    return (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">{user.name}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell className="capitalize">
+                          <select
+                            value={user.roles}
+                            onChange={(event) =>
+                              handleUserRole(user.id, event.target.value)
+                            }
+                            className="h-9 rounded-md border border-slate-300 bg-white px-2 text-xs"
+                          >
+                            {roleOptions.map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              tone
+                            )}
+                          >
+                            {status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onClick={() => handleUserStatus(user.id, "APPROVED")}
+                          >
+                            Approve
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card id="manuscript-control" className="mt-8 border-slate-200/70 bg-white/85">
+          <CardHeader className="border-b border-slate-200/70">
+            <CardTitle className="text-base">Manuscript control center</CardTitle>
+            <p className="text-xs text-slate-500">
+              Review manuscript status, open editorial reviews, and monitor the queue.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableCaption>
+                {isLoading
+                  ? "Loading manuscripts..."
+                  : manuscriptError
+                  ? manuscriptError
+                  : `${sortedManuscripts.length} manuscript(s) tracked.`}
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Author</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      Loading manuscripts...
+                    </TableCell>
+                  </TableRow>
+                ) : sortedManuscripts.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-sm text-slate-500"
+                    >
+                      No manuscripts available yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedManuscripts.map((manuscript) => {
+                    const normalized =
+                      manuscript.status?.toUpperCase() ?? "UNKNOWN";
+                    const label =
+                      statusLabels[normalized as ManuscriptStatus] ??
+                      manuscript.status ??
+                      "Unknown";
+                    const tone =
+                      manuscriptStatusTones[normalized] ??
+                      "border-slate-200 bg-slate-50 text-slate-600";
+
+                    return (
+                      <TableRow key={manuscript.id}>
+                        <TableCell className="font-medium">
+                          {manuscript.title}
+                        </TableCell>
+                        <TableCell>{manuscript.author?.name || "N/A"}</TableCell>
+                        <TableCell>
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+                              tone
+                            )}
+                          >
+                            {label}
+                          </span>
+                        </TableCell>
+                        <TableCell>{formatDate(manuscript.updatedAt)}</TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            asChild
+                          >
+                            <Link href={`/editor/manuscript/${manuscript.id}`}>
+                              Review
+                            </Link>
+                          </Button>
+                          {manuscript.contentUrl ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full"
+                              asChild
+                            >
+                              <a
+                                href={manuscript.contentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                PDF
+                              </a>
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[0.33fr_0.67fr]">
           <Card className="border-slate-200/70 bg-white/80">
             <CardHeader className="border-b border-slate-200/70">
               <CardTitle className="text-base">Publishing checklist</CardTitle>
@@ -310,6 +843,8 @@ export default function PublisherDashboard() {
                 <TableCaption>
                   {isLoading
                     ? "Loading production queue..."
+                    : manuscriptError
+                    ? manuscriptError
                     : `${productionQueue.length} manuscript(s) ready for production.`}
                 </TableCaption>
                 <TableHeader>
@@ -350,7 +885,7 @@ export default function PublisherDashboard() {
                         (typeof manuscript.status === "string" ? manuscript.status : undefined) ??
                         "Unknown";
                       const tone =
-                        statusTones[normalized] ??
+                        manuscriptStatusTones[normalized] ??
                         "border-slate-200 bg-slate-50 text-slate-600";
 
                       return (
@@ -376,7 +911,7 @@ export default function PublisherDashboard() {
                                 variant="outline"
                                 size="sm"
                                 className="rounded-full"
-                                onClick={() => handleOpenDialog(manuscript)}
+                                onClick={() => handleOpenPublishDialog(manuscript)}
                               >
                                 Publish
                               </Button>
@@ -396,9 +931,7 @@ export default function PublisherDashboard() {
                                 </a>
                               </Button>
                             ) : (
-                              <span className="text-xs text-slate-500">
-                                No PDF
-                              </span>
+                              <span className="text-xs text-slate-500">No PDF</span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -410,9 +943,10 @@ export default function PublisherDashboard() {
             </CardContent>
           </Card>
         </div>
+
       </section>
 
-      <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
         <DialogContent className="w-[min(96vw,920px)] max-w-3xl border-slate-200 bg-white p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg bg-slate-950 px-6 py-4 text-white">
             <DialogTitle className="text-base font-semibold">

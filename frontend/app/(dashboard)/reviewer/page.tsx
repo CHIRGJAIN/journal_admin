@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
-import { manuscriptService, reviewService } from "@/services";
+import { reviewService } from "@/services";
 
 type ReviewRecord = {
   id: string;
@@ -219,19 +219,6 @@ export default function ReviewerDashboard() {
 
       const nextDecision = normalized.decision || decision;
       const nextStatus = decisionStatusMap[nextDecision] || decisionStatusMap[decision];
-
-      // Update manuscript status in the backend
-      if (nextStatus && activeReview.manuscript?.id) {
-        try {
-          await manuscriptService.updateManuscriptStatus(
-            activeReview.manuscript.id,
-            nextStatus
-          );
-        } catch (error) {
-          console.error("Error updating manuscript status:", error);
-          // Continue even if status update fails
-        }
-      }
 
       setReviews((prev) =>
         prev.map((review) =>

@@ -6,6 +6,24 @@
 import { apiClient } from '@/lib/apiClient';
 import type { User } from '@/types/auth.types';
 
+type ApiEnvelope<T> = {
+  status?: boolean;
+  data?: T;
+  meta?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+  };
+};
+
+const unwrapData = <T>(response: ApiEnvelope<T> | T): T => {
+  if (response && typeof response === 'object' && 'data' in response) {
+    return (response as ApiEnvelope<T>).data as T;
+  }
+  return response as T;
+};
+
 interface UpdateProfileRequest {
   name?: string;
   email?: string;
@@ -18,28 +36,31 @@ class UserService {
    * Get user profile by ID
    */
   async getUserProfile(userId: string): Promise<User> {
-    return apiClient.get<User>(`/users/${userId}`);
+    const response = await apiClient.get<ApiEnvelope<User>>(`/users/${userId}`);
+    return unwrapData<User>(response);
   }
 
   /**
    * Update current user profile
    */
   async updateProfile(payload: UpdateProfileRequest): Promise<User> {
-    return apiClient.put<User>('/users/profile', payload);
+    const response = await apiClient.put<ApiEnvelope<User>>('/users/profile', payload);
+    return unwrapData<User>(response);
   }
 
   /**
    * Get all users (admin only)
    */
-  async getAllUsers(page: number = 1, limit: number = 20): Promise<{ users: User[] }> {
-    return apiClient.get<{ users: User[] }>(`/users?page=${page}&limit=${limit}`);
+  async getAllUsers(page: number = 1, limit: number = 20): Promise<ApiEnvelope<User[]>> {
+    return apiClient.get<ApiEnvelope<User[]>>(`/users?page=${page}&limit=${limit}`);
   }
 
   /**
    * Delete user account
    */
   async deleteAccount(): Promise<{ message: string }> {
-    return apiClient.delete<{ message: string }>('/users/profile');
+    const response = await apiClient.delete<ApiEnvelope<{ message: string }>>('/users/profile');
+    return unwrapData<{ message: string }>(response);
   }
 
   /**

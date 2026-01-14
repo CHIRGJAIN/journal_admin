@@ -1,16 +1,21 @@
 const jwt = require('jsonwebtoken');
 const { config } = require('../config/env');
 const authService = require('../services/auth.service');
+const usersService = require('../services/users.service');
+const { HttpError } = require('../utils/http-error');
 
 const login = async (req, res) => {
   const { email, password, role } = req.body || {};
-  const user = await authService.validateUser(email, password);
+  const validation = await authService.validateUser(email, password);
 
-  if (!user) {
-    throw new Error('Invalid credentials');
+  if (!validation.valid) {
+    if (validation.reason === 'NOT_APPROVED') {
+      throw new HttpError(403, 'Account pending approval');
+    }
+    throw new HttpError(401, 'Invalid credentials');
   }
 
-  const payload = await authService.login(user, role);
+  const payload = await authService.login(validation.user, role);
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax',
@@ -24,12 +29,23 @@ const login = async (req, res) => {
 };
 
 const register = async (req, res) => {
-  const user = await authService.register(req.body);
-  res.json({ status: true, data: user });
+  const payload = {
+    ...req.body,
+    roles: req.body.roles || 'author',
+    status: 'PENDING',
+  };
+  const user = await authService.register(payload);
+  const result = user.toObject ? user.toObject() : { ...user };
+  delete result.password;
+  res.json({ status: true, data: result });
 };
 
 const profile = async (req, res) => {
-  res.json({ status: true, data: req.user });
+  const user = await usersService.findById(req.user.userId);
+  if (!user) throw new HttpError(404, 'User not found');
+  const result = user.toObject ? user.toObject() : { ...user };
+  delete result.password;
+  res.json({ status: true, data: result });
 };
 
 const updateSettings = async (req, res) => {

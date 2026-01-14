@@ -5,6 +5,19 @@
 
 import { apiClient } from '@/lib/apiClient';
 
+type ApiEnvelope<T> = {
+  status?: boolean;
+  data?: T;
+  meta?: any;
+};
+
+const unwrapData = <T>(response: ApiEnvelope<T> | T): T => {
+  if (response && typeof response === 'object' && 'data' in response) {
+    return (response as ApiEnvelope<T>).data as T;
+  }
+  return response as T;
+};
+
 export interface Manuscript {
   id: string;
   title: string;
@@ -76,7 +89,8 @@ class ManuscriptService {
    * Get a single published/accepted manuscript publicly (no auth)
    */
   async getPublicManuscript(id: string): Promise<Manuscript> {
-    return apiClient.get<Manuscript>(`/manuscripts/public/${id}`);
+    const response = await apiClient.get<ApiEnvelope<Manuscript>>(`/manuscripts/public/${id}`);
+    return unwrapData<Manuscript>(response);
   }
 
   /**
@@ -105,7 +119,8 @@ class ManuscriptService {
    * Get manuscript by ID
    */
   async getManuscript(id: string): Promise<Manuscript> {
-    return apiClient.get<Manuscript>(`/manuscripts/${id}`);
+    const response = await apiClient.get<ApiEnvelope<Manuscript>>(`/manuscripts/${id}`);
+    return unwrapData<Manuscript>(response);
   }
 
   /**

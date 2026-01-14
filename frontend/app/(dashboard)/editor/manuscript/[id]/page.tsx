@@ -12,7 +12,8 @@ import { Label } from "@/components/ui/label";
 import { fileToDataUrl } from "@/lib/file-utils";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
-import { manuscriptService, reviewService } from "@/services";
+import { apiBase } from "@/lib/apiBase";
+import { safeParseJson } from "@/lib/safe-json";
 
 type ManuscriptRecord = {
   id: string;
@@ -59,6 +60,13 @@ const formatDate = (value?: string) =>
       })
     : "N/A";
 
+const normalizeManuscript = (payload: unknown): ManuscriptRecord | null => {
+  if (payload && typeof payload === "object" && (payload as any).data) {
+    return (payload as any).data as ManuscriptRecord;
+  }
+  return payload as ManuscriptRecord;
+};
+
 export default function EditorReviewPage() {
   const params = useParams<{ id: string }>();
   const manuscriptId = params?.id;
@@ -68,12 +76,14 @@ export default function EditorReviewPage() {
   const [reviewerId, setReviewerId] = useState("");
   const [formattedPdfUrl, setFormattedPdfUrl] = useState("");
   const [formattedPdfName, setFormattedPdfName] = useState("");
+  const [formattedPdfFile, setFormattedPdfFile] = useState<File | null>(null);
   const [preferredPdf, setPreferredPdf] = useState<"original" | "formatted">(
     "original"
   );
   const [actionError, setActionError] = useState("");
   const [actionNotice, setActionNotice] = useState("");
   const [actionStatus, setActionStatus] = useState<"idle" | "assigning">("idle");
+  const [handoffStatus, setHandoffStatus] = useState<"idle" | "sending">("idle");
 
   useEffect(() => {
     const fetchManuscript = async () => {
@@ -96,20 +106,37 @@ export default function EditorReviewPage() {
       }
 
       try {
-        // Use manuscriptService to get manuscript by ID
-        const data = await manuscriptService.getManuscript(manuscriptId);
-        if (data) {
-          const actualId = (data as any)._id || data.id || manuscriptId;
-          const normalizedData: ManuscriptRecord = {
-            id: actualId.toString(),
-            title: data.title,
-            status: data.status,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-            contentUrl: (data as any).contentUrl,
-            author: (data as any).author,
-          };
-          setManuscript(normalizedData);
+        const res = await fetch(
+          `${apiBase}/manuscripts/${manuscriptId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (res.ok) {
+          const payload = await safeParseJson(res);
+          const data = normalizeManuscript(payload);
+          setManuscript(data ?? localMatch);
+          setLoading(false);
+          return;
+        }
+
+        const listRes = await fetch(
+          `${apiBase}/manuscripts`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (listRes.ok) {
+          const payload = await safeParseJson(listRes);
+          const data = Array.isArray(payload?.data) ? payload.data : payload;
+          const match =
+            (data as ManuscriptRecord[]).find((item) => item.id === manuscriptId) ??
+            localMatch;
+          setManuscript(match);
+          if (!match) {
+            setLoadError("Unable to load this manuscript. Please try again.");
+          }
           setLoading(false);
           return;
         }
@@ -153,6 +180,7 @@ export default function EditorReviewPage() {
     const dataUrl = await fileToDataUrl(file);
     setFormattedPdfUrl(dataUrl);
     setFormattedPdfName(file.name);
+    setFormattedPdfFile(file);
     setPreferredPdf("formatted");
   };
 
@@ -178,39 +206,60 @@ export default function EditorReviewPage() {
     setActionNotice("");
 
     try {
-      // Update manuscript with formatted PDF if needed
-      if (preferredPdf === "formatted" && formattedPdfUrl) {
-        try {
-          await manuscriptService.updateManuscript(manuscript.id, {
-            content: formattedPdfUrl,
-          } as any);
-        } catch (error) {
-          console.error("Error updating manuscript:", error);
+      let updatedContentUrl = manuscript.contentUrl;
+
+      if (preferredPdf === "formatted") {
+        if (!formattedPdfFile) {
+          setActionError("Upload a formatted PDF or choose the original file.");
+          setActionStatus("idle");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("content", formattedPdfFile);
+
+        const updateRes = await fetch(
+          `${apiBase}/manuscripts/${manuscript.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          }
+        );
+
+        if (!updateRes.ok) {
           setActionError("Unable to save the formatted PDF.");
           setActionStatus("idle");
           return;
         }
+
+        const updatePayload = await safeParseJson(updateRes);
+        const updated =
+          updatePayload && updatePayload.data ? updatePayload.data : updatePayload;
+        updatedContentUrl = updated?.contentUrl ?? formattedPdfUrl;
       }
 
-      // Assign reviewer using reviewService
-      try {
-        await reviewService.assignReviewer(manuscript.id, reviewerId.trim());
-      } catch (error) {
-        console.error("Error assigning reviewer:", error);
+      const assignRes = await fetch(
+        `${apiBase}/reviews/assign`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            manuscriptId: manuscript.id,
+            reviewerId: reviewerId.trim(),
+          }),
+        }
+      );
+
+      if (!assignRes.ok) {
         setActionError("Unable to assign the reviewer. Try again.");
         setActionStatus("idle");
         return;
-      }
-
-      // Update manuscript status to UNDER_REVIEW
-      try {
-        await manuscriptService.updateManuscriptStatus(
-          manuscript.id,
-          "UNDER_REVIEW"
-        );
-      } catch (error) {
-        console.error("Error updating manuscript status:", error);
-        // Continue even if status update fails
       }
 
       setManuscript((prev) =>
@@ -219,7 +268,9 @@ export default function EditorReviewPage() {
               ...prev,
               status: "UNDER_REVIEW",
               contentUrl:
-                preferredPdf === "formatted" ? formattedPdfUrl : prev.contentUrl,
+                preferredPdf === "formatted"
+                  ? updatedContentUrl ?? formattedPdfUrl
+                  : prev.contentUrl,
             }
           : prev
       );
@@ -231,7 +282,63 @@ export default function EditorReviewPage() {
     }
   };
 
+  const handleSendToPublisher = async () => {
+    if (!manuscript) return;
+    if (normalizedStatus !== "ACCEPTED") {
+      setActionError("This manuscript must be accepted before sending.");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setActionError("Sign in again to continue.");
+      return;
+    }
+
+    setHandoffStatus("sending");
+    setActionError("");
+    setActionNotice("");
+
+    try {
+      const res = await fetch(
+        `${apiBase}/manuscripts/${manuscript.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: "ACCEPTED" }),
+        }
+      );
+
+      const payload = await safeParseJson(res);
+      if (!res.ok) {
+        setActionError(payload?.message || "Unable to send to publisher.");
+        return;
+      }
+
+      const updated = payload?.data ?? payload;
+      setManuscript((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: updated?.status ?? "ACCEPTED",
+              updatedAt: updated?.updatedAt ?? prev.updatedAt,
+            }
+          : prev
+      );
+      setActionNotice("Sent to publisher for final publishing review.");
+    } catch {
+      setActionError("Unable to send to publisher.");
+    } finally {
+      setHandoffStatus("idle");
+    }
+  };
+
   const isSubmitting = actionStatus === "assigning";
+  const isSendingToPublisher = handoffStatus === "sending";
+  const canSendToPublisher = normalizedStatus === "ACCEPTED";
 
   return (
     <div className="min-h-screen">
@@ -460,6 +567,28 @@ export default function EditorReviewPage() {
                         {isSubmitting ? "Sending..." : "Send to reviewer"}
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
+                      Send to publisher
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Forward accepted manuscripts for publishing approval.
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-4 w-full rounded-full bg-slate-900 text-white hover:bg-slate-800"
+                      onClick={handleSendToPublisher}
+                      disabled={!canSendToPublisher || isSendingToPublisher}
+                    >
+                      {isSendingToPublisher ? "Sending..." : "Send to publisher"}
+                    </Button>
+                    {!canSendToPublisher ? (
+                      <p className="mt-2 text-xs text-slate-500">
+                        This action is available after the manuscript is accepted.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>

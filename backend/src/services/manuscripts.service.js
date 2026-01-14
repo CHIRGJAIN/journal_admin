@@ -1,7 +1,3 @@
-const updateStatus = async (id, status) => {
-  if (!isValidObjectId(id)) return null;
-  return Manuscript.findByIdAndUpdate(id, { status }, { new: true }).exec();
-};
 const { Manuscript } = require('../models/manuscript.model');
 const Issue = require('../models/Issue.model');
 const { isValidObjectId } = require('../utils/object-id');
@@ -11,6 +7,15 @@ const createManuscript = async (data) => {
   return manuscript;
 };
 
+const updateStatus = async (id, status) => {
+  if (!isValidObjectId(id)) return null;
+  return Manuscript.findByIdAndUpdate(id, { status }, { new: true }).exec();
+};
+
+const updateManuscript = async (id, payload) => {
+  if (!isValidObjectId(id)) return null;
+  return Manuscript.findByIdAndUpdate(id, payload, { new: true }).exec();
+};
 
 const findAll = async ({ skip = 0, limit = 10 } = {}) =>
   Manuscript.find()
@@ -32,7 +37,7 @@ const findAllPublished = async ({ skip = 0, limit = 10 } = {}) =>
 const countPublished = async () => Manuscript.countDocuments({ status: 'PUBLISHED' });
 
 const searchPublished = async ({ q, type, issueSlug, skip = 0, limit = 10 } = {}) => {
-  const filter = { status: { $in: ['PUBLISHED', 'ACCEPTED'] } };
+  const filter = { status: 'PUBLISHED' };
 
   if (type) {
     filter.type = type;
@@ -46,7 +51,7 @@ const searchPublished = async ({ q, type, issueSlug, skip = 0, limit = 10 } = {}
   // If issueSlug provided, restrict to manuscripts attached to that issue
   let issueManuscriptIds = null;
   if (issueSlug) {
-    const issue = await Issue.findById(issueSlug).select('manuscripts').lean();
+    const issue = await Issue.findOne({ slug: issueSlug }).select('manuscripts').lean();
    
     if (issue && Array.isArray(issue.manuscripts) && issue.manuscripts.length > 0) {
       issueManuscriptIds = issue.manuscripts.map((id) => id.toString());
@@ -80,7 +85,7 @@ const findOnePublished = async (id) => {
     return null;
   }
 
-  return Manuscript.findOne({ _id: id})
+  return Manuscript.findOne({ _id: id, status: 'PUBLISHED' })
     .populate('author', 'name')
     .exec();
 };
@@ -115,6 +120,7 @@ const findOne = async (id) => {
 
 module.exports = {
   createManuscript,
+  updateManuscript,
   findAll,
   countAll,
   findAllPublished,

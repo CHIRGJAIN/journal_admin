@@ -4,6 +4,7 @@ const manuscriptsRoutes = require('./manuscripts.routes');
 const reviewsRoutes = require('./reviews.routes');
 const issueRoutes = require('./issue.routes');
 const blogRoutes = require('./blog.routes');
+const usersRoutes = require('./users.routes');
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use('/api/issues', issueRoutes);
 
 
 router.use('/api/blog', blogRoutes);
+router.use('/api/users', usersRoutes);
 
 module.exports = router;

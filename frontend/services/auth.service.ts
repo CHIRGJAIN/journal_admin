@@ -6,30 +6,59 @@
 import { apiClient } from '@/lib/apiClient';
 import type { RegisterRequest, LoginRequest, AuthResponse, User } from '@/types/auth.types';
 
+type ApiEnvelope<T> = {
+  status?: boolean;
+  data?: T;
+};
+
+type LoginPayload = {
+  access_token: string;
+  user: User;
+};
+
+const unwrapData = <T>(response: ApiEnvelope<T> | T): T => {
+  if (response && typeof response === 'object' && 'data' in response) {
+    return (response as ApiEnvelope<T>).data as T;
+  }
+  return response as T;
+};
+
+const normalizeAuthResponse = (payload: any): AuthResponse => {
+  if (payload?.data?.access_token) {
+    return { token: payload.data.access_token, user: payload.data.user };
+  }
+  if (payload?.access_token) {
+    return { token: payload.access_token, user: payload.user };
+  }
+  if (payload?.token) {
+    return { token: payload.token, user: payload.user };
+  }
+  return payload as AuthResponse;
+};
+
 class AuthService {
   /**
    * Register a new user
    */
-  async registerUser(payload: RegisterRequest): Promise<AuthResponse> {
-    return apiClient.post<AuthResponse>('/auth/register', payload);
+  async registerUser(payload: RegisterRequest): Promise<User> {
+    const response = await apiClient.post<ApiEnvelope<User>>('/auth/register', payload);
+    return unwrapData<User>(response);
   }
 
   /**
    * Login user
    */
   async loginUser(payload: LoginRequest): Promise<AuthResponse> {
-    const res = await apiClient.post<any>('/auth/login', payload);
-    // Backend responds with { status: true, data: { token, user } }
-    return res && res.data ? res.data : res;
+    const response = await apiClient.post<ApiEnvelope<LoginPayload>>('/auth/login', payload);
+    return normalizeAuthResponse(response);
   }
 
   /**
    * Get current user profile
    */
   async getProfile(): Promise<User> {
-    const res = await apiClient.get<any>('/auth/profile', true, { withCredentials: true });
-    // Backend responds with { status: true, data: user }
-    return res && res.data ? res.data : res;
+    const response = await apiClient.get<ApiEnvelope<User>>('/auth/profile', true, { withCredentials: true });
+    return unwrapData<User>(response);
   }
 
   /**
@@ -38,6 +67,7 @@ class AuthService {
   async logout(): Promise<void> {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
     // Optionally call backend logout endpoint
     // await apiClient.post('/auth/logout', {});

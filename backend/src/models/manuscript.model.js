@@ -57,6 +57,7 @@ const manuscriptSchema = new mongoose.Schema(
       default: 0, // Total page count across all PDF files
     },
     imageUrl: { type: String },
+    contentUrl: { type: String },
     comment: { type: String },
     keywords: { type: [String] },
     authorList:{ 

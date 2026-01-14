@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, ShieldCheck, Sparkles, User } from "lucide-react";
 
@@ -47,8 +46,6 @@ export default function RegisterPage() {
   const [status, setStatus] = useState<RegisterStatus>("idle");
   const [message, setMessage] = useState("");
 
-  const router = useRouter();
-
   const roleCopy = useMemo(() => {
     switch (role) {
       case "reviewer":
@@ -83,30 +80,15 @@ export default function RegisterPage() {
     setStatus("submitting");
 
     try {
-      const response = await authService.registerUser({
+      await authService.registerUser({
         name: fullName.trim(),
         email: email.trim(),
         password,
         roles: role,
       });
 
-      if (response?.token && typeof window !== "undefined") {
-        localStorage.setItem("token", response.token);
-      }
-
       setStatus("success");
-      setMessage("Registration complete. Redirecting to your portal...");
-
-      const roleRoutes: Record<typeof role, string> = {
-        author: "/author",
-        reviewer: "/reviewer",
-        editor: "/editor",
-        publisher: "/publisher",
-      };
-
-      setTimeout(() => {
-        router.push(roleRoutes[role] ?? "/login");
-      }, 900);
+      setMessage("Registration submitted. An admin will approve your account before you can sign in.");
     } catch (error) {
       const errorMessage = error instanceof Error
         ? error.message

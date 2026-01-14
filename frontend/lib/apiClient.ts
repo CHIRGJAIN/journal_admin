@@ -3,6 +3,8 @@
  * Handles all HTTP requests with authentication, error handling, and performance optimizations
  */
 
+import { apiBase } from './apiBase';
+
 // Simple in-memory cache
 interface CacheEntry<T> {
   data: T;
@@ -17,14 +19,7 @@ class ApiClient {
   private readonly RETRY_DELAY = 1000; // 1 second
 
   constructor() {
-    const rawBase = process.env.NEXT_PUBLIC_API_URL || '/api';
-
-    // If an origin is provided without a path (e.g., http://localhost:3000),
-    // automatically target the Next.js API by appending /api.
-    const withApi = /\/api\b/.test(rawBase) ? rawBase : `${rawBase}/api`;
-
-    // Normalize to avoid double slashes
-    this.baseURL = withApi.endsWith('/') ? withApi.slice(0, -1) : withApi;
+    this.baseURL = apiBase;
     this.cache = new Map();
   }
 
@@ -138,6 +133,19 @@ class ApiClient {
   }
 
   /**
+   * Parse JSON safely, even when the response is HTML or empty.
+   */
+  private async safeParse(response: Response): Promise<any> {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  }
+
+  /**
    * Generic request method with caching and retry
    */
   private async request<T>(
@@ -168,8 +176,8 @@ class ApiClient {
         keepalive: true,
       });
 
-      // Parse response
-      const data = await response.json();
+      // Parse response safely
+      const data = await this.safeParse(response);
 
       // Handle error responses
       if (!response.ok) {
@@ -215,7 +223,7 @@ class ApiClient {
         signal: AbortSignal.timeout(30000),
         keepalive: true,
       });
-      const data = await response.json();
+      const data = await this.safeParse(response);
       if (!response.ok) {
         throw new ApiError(
           data.message || `API Error: ${response.status}`,
@@ -261,7 +269,7 @@ class ApiClient {
         credentials: options?.withCredentials ? 'include' : 'same-origin',
       });
 
-      const data = await response.json();
+      const data = await this.safeParse(response);
 
       if (!response.ok) {
         throw new ApiError(

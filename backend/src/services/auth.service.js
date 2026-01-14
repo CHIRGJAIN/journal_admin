@@ -6,17 +6,21 @@ const usersService = require('./users.service');
 const validateUser = async (email, password) => {
   const user = await usersService.findByEmail(email);
   if (!user) {
-    return null;
+    return { valid: false, reason: 'INVALID_CREDENTIALS' };
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
-    return null;
+    return { valid: false, reason: 'INVALID_CREDENTIALS' };
+  }
+
+  if (user.status !== 'APPROVED') {
+    return { valid: false, reason: 'NOT_APPROVED', status: user.status };
   }
 
   const result = user.toObject();
   delete result.password;
-  return result;
+  return { valid: true, user: result };
 };
 
 const login = async (user, role) => {
@@ -42,13 +46,14 @@ const login = async (user, role) => {
   return {
     token,
     user: {
-      id: user._id || user.id,
+      id: user.id || user._id,
       email: user.email,
       name: user.name,
       phone: user.phone,
       roles: normalizedRoles,
       role: role || normalizedRoles[0],
       expertise: user.expertise,
+      status: user.status,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
