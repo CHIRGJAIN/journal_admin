@@ -23,13 +23,13 @@ const monoFont = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://trinixjournal.com"),
   title: {
-    default: "Trinix Journal of Advanced Engineering and Sciences",
-    template: "%s | Trinix Journal of Advanced Engineering and Sciences",
+    default: "Advance Ancient Knowledge and Wisdom Journal",
+    template: "%s | Advance Ancient Knowledge and Wisdom Journal",
   },
   description:
     "A peer-reviewed journal by Trinix Pvt Ltd focused on engineering, AI/ML, materials, sustainability, and technology innovation.",
   openGraph: {
-    title: "Trinix Journal of Advanced Engineering and Sciences",
+    title: "Advance Ancient Knowledge and Wisdom Journal",
     description:
       "Peer-reviewed research across engineering, AI/ML, materials, sustainability, and tech innovation.",
     type: "website",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Trinix Journal of Advanced Engineering and Sciences",
+    title: "Advance Ancient Knowledge and Wisdom Journal",
     description:
       "Peer-reviewed research across engineering, AI/ML, materials, sustainability, and tech innovation.",
   },

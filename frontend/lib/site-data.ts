@@ -1,23 +1,13 @@
 export const journalMeta = {
-  title: "Trinix Journal of Advanced Engineering and Sciences",
-  shortTitle: "Trinix Journal",
-  issnPrint: "ISSN 2584-4109",
-  issnOnline: "eISSN 2584-4117",
+  title: "Advance Ancient Knowledge and Wisdom Journal",
+  shortTitle: "Journal X",
+  // issnPrint: "ISSN 2584-4109",
+  // issnOnline: "eISSN 2584-4117",
   publisher: "Trinix Pvt Ltd",
   location: "Delhi, India",
   tagline: "Peer-reviewed research across engineering, AI/ML, materials, sustainability, and innovation.",
 };
 
-export const navLinks = [
-  { label: "Home", href: "/" },
-  { label: "About", href: "/about-us" },
-  { label: "Issues", href: "/archive" },
-  { label: "Blog", href: "/blog" },
-  { label: "Editorial Board", href: "/editorial-board" },
-  { label: "Policy", href: "/journal-policy" },
-  { label: "Ethics", href: "/publication-ethics" },
-  { label: "Contact", href: "/contact" },
-];
 
 export const quickLinks = [
   { label: "Author Guidelines", href: "/manuscript-submission" },
