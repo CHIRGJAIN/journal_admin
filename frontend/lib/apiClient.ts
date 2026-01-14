@@ -142,7 +142,7 @@ class ApiClient {
    */
   private async request<T>(
     endpoint: string,
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     body?: unknown,
     headers?: Record<string, string>,
     useCache: boolean = false
@@ -293,6 +293,13 @@ class ApiClient {
    */
   async put<T>(endpoint: string, body: unknown): Promise<T> {
     return this.request<T>(endpoint, 'PUT', body);
+  }
+
+  /**
+   * PATCH request
+   */
+  async patch<T>(endpoint: string, body: unknown): Promise<T> {
+    return this.request<T>(endpoint, 'PATCH', body);
   }
 
   /**

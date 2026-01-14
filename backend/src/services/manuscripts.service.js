@@ -85,13 +85,8 @@ const findOnePublished = async (id) => {
     .exec();
 };
 
-const findMyManuscripts = async (authorId, statusFilter = null) => {
-  const query = { authorId };
-  if (statusFilter && Array.isArray(statusFilter) && statusFilter.length > 0) {
-    query.status = { $in: statusFilter };
-  }
-  return Manuscript.find(query).exec();
-};
+const findMyManuscripts = async (authorId) =>
+  Manuscript.find({ authorId }).exec();
 
 const getSummaryForAuthor = async (authorId) => {
   const total = await Manuscript.countDocuments({ authorId });

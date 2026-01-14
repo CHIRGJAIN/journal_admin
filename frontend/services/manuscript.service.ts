@@ -18,6 +18,17 @@ export interface Manuscript {
   keywords?: string[];
 }
 
+export type ManuscriptListResponse = {
+  data: Manuscript[];
+  meta?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+  };
+  status?: boolean;
+};
+
 export interface SubmitManuscriptRequest {
   title: string;
   abstract: string;
@@ -27,6 +38,22 @@ export interface SubmitManuscriptRequest {
 }
 
 class ManuscriptService {
+  async getAll(params?: { page?: number; limit?: number }): Promise<ManuscriptListResponse> {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.limit) query.append('limit', params.limit.toString());
+
+    const endpoint = query.toString() ? `/manuscripts?${query.toString()}` : '/manuscripts';
+    const res = await apiClient.get<any>(endpoint);
+
+    if (Array.isArray(res)) {
+      return { data: res };
+    }
+
+    const { data, meta, status } = res ?? {};
+    return { data: data ?? [], meta, status };
+  }
+
   async getTypes(): Promise<string[]> {
     const res = await apiClient.get<{ status?: boolean; data?: string[]; types?: string[] }>(`/manuscripts/types`);
     return res.data ?? res.types ?? [];

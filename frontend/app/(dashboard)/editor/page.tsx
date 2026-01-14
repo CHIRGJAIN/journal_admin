@@ -26,6 +26,7 @@ import {
 import { fileToDataUrl } from "@/lib/file-utils";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
+import { manuscriptService } from "@/services";
 
 type ManuscriptRecord = {
   id: string;
@@ -73,6 +74,48 @@ const mergeManuscripts = (
   return Array.from(merged.values());
 };
 
+const EDITOR_QUEUE_STATUSES: ManuscriptStatus[] = [
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "REVISION_REQUESTED",
+];
+
+const normalizeManuscripts = (items: ManuscriptRecord[]) =>
+  items.map((item) => {
+    const fallbackId =
+      (item as any)._id ||
+      item.id ||
+      (item as any).manuscriptId ||
+      [item.title, item.createdAt, item.updatedAt].filter(Boolean).join("-") ||
+      Math.random().toString(36).slice(2);
+
+    const files = (item as any).files;
+    const contentUrl =
+      item.contentUrl ??
+      (Array.isArray(files) && files.length > 0
+        ? files[0]?.fileUrl || files[0]?.url
+        : undefined);
+
+    const author = (item as any).author || (item as any).authorId || item.author;
+
+    return {
+      ...item,
+      id: fallbackId.toString(),
+      status: (item.status || "").toUpperCase(),
+      contentUrl,
+      author: author
+        ? { name: author.name, email: author.email }
+        : undefined,
+    };
+  });
+
+const filterForEditorQueue = (items: ManuscriptRecord[]) =>
+  items.filter((item) =>
+    EDITOR_QUEUE_STATUSES.includes(
+      (item.status || "").toUpperCase() as ManuscriptStatus
+    )
+  );
+
 const formatDate = (value?: string) =>
   value
     ? new Date(value).toLocaleDateString("en-US", {
@@ -85,6 +128,7 @@ const formatDate = (value?: string) =>
 export default function EditorDashboard() {
   const [manuscripts, setManuscripts] = useState<ManuscriptRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const [activeManuscript, setActiveManuscript] =
     useState<ManuscriptRecord | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -100,28 +144,27 @@ export default function EditorDashboard() {
   useEffect(() => {
     const fetchManuscripts = async () => {
       const token = localStorage.getItem("token");
-      const localManuscripts = readLocalManuscripts();
+      const localManuscripts = normalizeManuscripts(readLocalManuscripts());
+
       if (!token) {
-        setManuscripts(localManuscripts);
+        const filtered = filterForEditorQueue(localManuscripts);
+        setManuscripts(filtered);
+        setTotalCount(filtered.length);
         setIsLoading(false);
         return;
       }
 
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/manuscripts`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (res.ok) {
-          const data = (await res.json()) as ManuscriptRecord[];
-          setManuscripts(mergeManuscripts(data, localManuscripts));
-        } else {
-          setManuscripts(localManuscripts);
-        }
+        const response = await manuscriptService.getAll({ page: 1, limit: 200 });
+        const remoteManuscripts = normalizeManuscripts(response.data || []);
+        const merged = mergeManuscripts(remoteManuscripts, localManuscripts);
+        const filtered = filterForEditorQueue(merged);
+        setManuscripts(filtered);
+        setTotalCount(response.meta?.total ?? filtered.length);
       } catch {
-        setManuscripts(localManuscripts);
+        const filtered = filterForEditorQueue(localManuscripts);
+        setManuscripts(filtered);
+        setTotalCount(filtered.length);
       } finally {
         setIsLoading(false);
       }
@@ -141,6 +184,10 @@ export default function EditorDashboard() {
   const summaryStats = useMemo(
     () => [
       {
+        label: "Total manuscripts",
+        value: totalCount,
+      },
+      {
         label: "Awaiting format check",
         value: statusCounts.SUBMITTED ?? 0,
       },
@@ -153,7 +200,7 @@ export default function EditorDashboard() {
         value: statusCounts.REVISION_REQUESTED ?? 0,
       },
     ],
-    [statusCounts]
+    [statusCounts, totalCount]
   );
 
   const sortedManuscripts = useMemo(() => {
@@ -313,7 +360,7 @@ export default function EditorDashboard() {
             </p>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 md:grid-cols-4">
             {summaryStats.map((stat, index) => {
               const icon =
                 index === 0 ? FileText : index === 1 ? UserCheck : ClipboardCheck;
@@ -373,7 +420,7 @@ export default function EditorDashboard() {
                 <TableCaption>
                   {isLoading
                     ? "Loading submissions..."
-                    : `${sortedManuscripts.length} manuscript(s) in the queue.`}
+                    : `${totalCount || sortedManuscripts.length} manuscript(s) in the queue.`}
                 </TableCaption>
                 <TableHeader>
                   <TableRow>

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
+import { reviewService } from "@/services";
 
 type ReviewRecord = {
   id: string;
@@ -35,6 +36,7 @@ type ReviewRecord = {
     title: string;
     status?: string;
     contentUrl?: string;
+    files?: Array<{ fileUrl?: string; url?: string }>;
     updatedAt?: string;
   };
 };
@@ -67,6 +69,45 @@ const decisionStatusMap: Record<string, string> = {
   REVISE: "REVISION_REQUESTED",
 };
 
+const normalizeReviews = (items: ReviewRecord[]) =>
+  items.map((item) => {
+    const fallbackReviewId =
+      (item as any)._id ||
+      item.id ||
+      (item as any).reviewId ||
+      [item.manuscript?.id, item.createdAt].filter(Boolean).join("-") ||
+      Math.random().toString(36).slice(2);
+
+    const manuscript = (item as any).manuscript || {};
+    const manuscriptId =
+      (manuscript as any)._id ||
+      manuscript.id ||
+      (manuscript as any).manuscriptId ||
+      (item as any).manuscriptId ||
+      Math.random().toString(36).slice(2);
+
+    const files = (manuscript as any).files;
+    const contentUrl =
+      manuscript.contentUrl ??
+      (Array.isArray(files) && files.length > 0
+        ? files[0]?.fileUrl || files[0]?.url
+        : undefined);
+
+    return {
+      ...item,
+      id: fallbackReviewId.toString(),
+      decision: (item.decision || "PENDING").toUpperCase(),
+      manuscript: {
+        ...manuscript,
+        id: manuscriptId.toString(),
+        title: manuscript.title || item.manuscript?.title || "Untitled manuscript",
+        status: (manuscript.status || "").toUpperCase(),
+        contentUrl,
+        files,
+      },
+    };
+  });
+
 export default function ReviewerDashboard() {
   const [reviews, setReviews] = useState<ReviewRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,13 +127,10 @@ export default function ReviewerDashboard() {
       }
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reviews/my`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = (await res.json()) as ReviewRecord[];
-          setReviews(data);
-        }
+        const data = await reviewService.getMyReviews();
+        setReviews(normalizeReviews(data || []));
+      } catch {
+        setReviews([]);
       } finally {
         setIsLoading(false);
       }
@@ -164,43 +202,39 @@ export default function ReviewerDashboard() {
     setSubmitError("");
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/reviews/${activeReview.id}/submit`,
+      const updated = await reviewService.submitReview(activeReview.id, {
+        content: reviewNotes.trim(),
+        decision,
+      });
+
+      const normalized = normalizeReviews([
         {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            content: reviewNotes.trim(),
-            decision,
-          }),
-        }
-      );
+          ...activeReview,
+          ...updated,
+          content: updated?.content ?? reviewNotes.trim(),
+          decision: (updated?.decision ?? decision).toUpperCase(),
+          manuscript: updated?.manuscript ?? activeReview.manuscript,
+        } as ReviewRecord,
+      ])[0];
 
-      if (!res.ok) {
-        setSubmitError("Unable to submit the review. Try again.");
-        setSubmitStatus("idle");
-        return;
-      }
+      const nextDecision = normalized.decision || decision;
+      const nextStatus = decisionStatusMap[nextDecision] || decisionStatusMap[decision];
 
-      const nextStatus = decisionStatusMap[decision];
       setReviews((prev) =>
         prev.map((review) =>
           review.id === activeReview.id
             ? {
-                ...review,
-                content: reviewNotes.trim(),
-                decision,
+                ...normalized,
                 manuscript: nextStatus
-                  ? { ...review.manuscript, status: nextStatus }
-                  : review.manuscript,
+                  ? { ...normalized.manuscript, status: nextStatus }
+                  : normalized.manuscript,
               }
             : review
         )
       );
       setDialogOpen(false);
+    } catch {
+      setSubmitError("Unable to submit the review. Try again.");
     } finally {
       setSubmitStatus("idle");
     }
