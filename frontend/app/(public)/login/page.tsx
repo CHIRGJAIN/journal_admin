@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { authService } from "@/services/auth.service";
@@ -170,6 +171,17 @@ export default function ManuscriptLoginPage() {
                   >
                     Login with ORCID
                     <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-full border border-saffron-100 bg-saffron-50/70 px-4 py-2 text-xs text-slate-600">
+                  <span>New to the portal?</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="h-7 rounded-full border-saffron-200 bg-white text-saffron-800 hover:bg-saffron-50"
+                  >
+                    <Link href="/register">Register yourself</Link>
                   </Button>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-500">

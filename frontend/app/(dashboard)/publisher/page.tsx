@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
+import { manuscriptService } from "@/services";
 
 type ManuscriptRecord = {
   id: string;
@@ -65,13 +66,21 @@ const mergeManuscripts = (
   return Array.from(merged.values());
 };
 
-const normalizeManuscripts = (payload: unknown): ManuscriptRecord[] => {
-  if (Array.isArray(payload)) return payload as ManuscriptRecord[];
-  if (payload && typeof payload === "object" && Array.isArray((payload as any).data)) {
-    return (payload as any).data as ManuscriptRecord[];
-  }
-  return [];
-};
+const normalizeManuscripts = (items: ManuscriptRecord[]) =>
+  items.map((item) => {
+    const fallbackId =
+      (item as any)._id ||
+      item.id ||
+      (item as any).manuscriptId ||
+      [item.title, item.createdAt, item.updatedAt].filter(Boolean).join("-") ||
+      Math.random().toString(36).slice(2);
+
+    return {
+      ...item,
+      id: fallbackId.toString(),
+      status: (item.status || "").toUpperCase(),
+    };
+  });
 
 const formatDate = (value?: string) =>
   value
@@ -95,28 +104,24 @@ export default function PublisherDashboard() {
     const fetchManuscripts = async () => {
       const token = localStorage.getItem("token");
       const localManuscripts = readLocalManuscripts();
+
       if (!token) {
-        setManuscripts(localManuscripts);
+        const normalized = normalizeManuscripts(localManuscripts);
+        setManuscripts(normalized);
         setIsLoading(false);
         return;
       }
 
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/manuscripts`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        if (res.ok) {
-          const payload = await res.json();
-          const data = normalizeManuscripts(payload);
-          setManuscripts(mergeManuscripts(data, localManuscripts));
-        } else {
-          setManuscripts(localManuscripts);
-        }
-      } catch {
-        setManuscripts(localManuscripts);
+        // Use manuscriptService to get all manuscripts
+        const response = await manuscriptService.getAll({ page: 1, limit: 200 });
+        const remoteManuscripts = normalizeManuscripts(response.data || []);
+        const merged = mergeManuscripts(remoteManuscripts, normalizeManuscripts(localManuscripts));
+        setManuscripts(merged);
+      } catch (error) {
+        console.error("Error fetching manuscripts:", error);
+        const normalized = normalizeManuscripts(localManuscripts);
+        setManuscripts(normalized);
       } finally {
         setIsLoading(false);
       }
@@ -197,23 +202,11 @@ export default function PublisherDashboard() {
     setPublishError("");
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/manuscripts/${activeManuscript.id}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status: "PUBLISHED" }),
-        }
+      // Use manuscriptService to update manuscript status
+      await manuscriptService.updateManuscriptStatus(
+        activeManuscript.id,
+        "PUBLISHED"
       );
-
-      if (!res.ok) {
-        setPublishError("Unable to publish the manuscript. Try again.");
-        setPublishStatus("idle");
-        return;
-      }
 
       setManuscripts((prev) =>
         prev.map((item) =>
@@ -221,17 +214,20 @@ export default function PublisherDashboard() {
         )
       );
       setDialogOpen(false);
+    } catch (error) {
+      console.error("Error publishing manuscript:", error);
+      setPublishError("Unable to publish the manuscript. Try again.");
     } finally {
       setPublishStatus("idle");
     }
   };
 
-  const activeStatus = activeManuscript?.status
+  const activeStatus = typeof activeManuscript?.status === "string"
     ? activeManuscript.status.toUpperCase()
     : "UNKNOWN";
   const activeStatusLabel =
     statusLabels[activeStatus as ManuscriptStatus] ??
-    activeManuscript?.status ??
+    (typeof activeManuscript?.status === "string" ? activeManuscript.status : undefined) ??
     "Unknown";
   const activeStatusTone =
     statusTones[activeStatus] ?? "border-slate-200 bg-slate-50 text-slate-600";
@@ -346,11 +342,12 @@ export default function PublisherDashboard() {
                     </TableRow>
                   ) : (
                     productionQueue.map((manuscript) => {
-                      const normalized =
-                        manuscript.status?.toUpperCase() ?? "UNKNOWN";
+                      const normalized = typeof manuscript.status === "string"
+                        ? manuscript.status.toUpperCase()
+                        : "UNKNOWN";
                       const label =
                         statusLabels[normalized as ManuscriptStatus] ??
-                        manuscript.status ??
+                        (typeof manuscript.status === "string" ? manuscript.status : undefined) ??
                         "Unknown";
                       const tone =
                         statusTones[normalized] ??

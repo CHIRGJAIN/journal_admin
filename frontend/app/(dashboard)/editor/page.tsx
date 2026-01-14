@@ -1,19 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ClipboardCheck,
-  ExternalLink,
-  FileText,
-  UploadCloud,
-  UserCheck,
-} from "lucide-react";
+import { ClipboardCheck, FileText, UserCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -23,7 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fileToDataUrl } from "@/lib/file-utils";
 import { statusLabels, type ManuscriptStatus } from "@/lib/author-portal";
 import { cn } from "@/lib/utils";
 import { manuscriptService } from "@/services";
@@ -129,17 +120,6 @@ export default function EditorDashboard() {
   const [manuscripts, setManuscripts] = useState<ManuscriptRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
-  const [activeManuscript, setActiveManuscript] =
-    useState<ManuscriptRecord | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [reviewerId, setReviewerId] = useState("");
-  const [formattedPdfUrl, setFormattedPdfUrl] = useState("");
-  const [formattedPdfName, setFormattedPdfName] = useState("");
-  const [preferredPdf, setPreferredPdf] = useState<"original" | "formatted">(
-    "original"
-  );
-  const [actionError, setActionError] = useState("");
-  const [actionStatus, setActionStatus] = useState<"idle" | "assigning">("idle");
 
   useEffect(() => {
     const fetchManuscripts = async () => {
@@ -210,134 +190,6 @@ export default function EditorDashboard() {
       return bTime - aTime;
     });
   }, [manuscripts]);
-
-  const resetDialogState = () => {
-    setReviewerId("");
-    setFormattedPdfUrl("");
-    setFormattedPdfName("");
-    setPreferredPdf("original");
-    setActionError("");
-    setActionStatus("idle");
-  };
-
-  const handleOpenDialog = (manuscript: ManuscriptRecord) => {
-    setActiveManuscript(manuscript);
-    resetDialogState();
-    setDialogOpen(true);
-  };
-
-  const handleDialogChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setActiveManuscript(null);
-      resetDialogState();
-    }
-  };
-
-  const handleFormattedUpload = async (file: File | null) => {
-    if (!file) return;
-    if (file.type !== "application/pdf") {
-      setActionError("Only PDF files can be uploaded for formatting.");
-      return;
-    }
-
-    setActionError("");
-    const dataUrl = await fileToDataUrl(file);
-    setFormattedPdfUrl(dataUrl);
-    setFormattedPdfName(file.name);
-    setPreferredPdf("formatted");
-  };
-
-  const handleSendToReviewer = async () => {
-    if (!activeManuscript) return;
-    if (!reviewerId.trim()) {
-      setActionError("Enter a reviewer ID to continue.");
-      return;
-    }
-    if (preferredPdf === "formatted" && !formattedPdfUrl) {
-      setActionError("Upload a formatted PDF or choose the original file.");
-      return;
-    }
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setActionError("Sign in again to continue.");
-      return;
-    }
-
-    setActionStatus("assigning");
-    setActionError("");
-
-    try {
-      if (preferredPdf === "formatted" && formattedPdfUrl) {
-        const updateRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/manuscripts/${activeManuscript.id}`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ contentUrl: formattedPdfUrl }),
-          }
-        );
-
-        if (!updateRes.ok) {
-          setActionError("Unable to save the formatted PDF.");
-          setActionStatus("idle");
-          return;
-        }
-      }
-
-      const assignRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/reviews/assign`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            manuscriptId: activeManuscript.id,
-            reviewerId: reviewerId.trim(),
-          }),
-        }
-      );
-
-      if (!assignRes.ok) {
-        setActionError("Unable to assign the reviewer. Try again.");
-        setActionStatus("idle");
-        return;
-      }
-
-      setManuscripts((prev) =>
-        prev.map((item) =>
-          item.id === activeManuscript.id
-            ? {
-                ...item,
-                status: "UNDER_REVIEW",
-                contentUrl:
-                  preferredPdf === "formatted" ? formattedPdfUrl : item.contentUrl,
-              }
-            : item
-        )
-      );
-
-      setDialogOpen(false);
-    } finally {
-      setActionStatus("idle");
-    }
-  };
-
-  const normalizedStatus = activeManuscript?.status
-    ? activeManuscript.status.toUpperCase()
-    : "UNKNOWN";
-  const activeStatusLabel =
-    statusLabels[normalizedStatus as ManuscriptStatus] ??
-    activeManuscript?.status ??
-    "Unknown";
-  const activeStatusTone =
-    statusTones[normalizedStatus] ?? "border-slate-200 bg-slate-50 text-slate-600";
 
   return (
     <div className="min-h-screen">
@@ -484,9 +336,11 @@ export default function EditorDashboard() {
                               variant="outline"
                               size="sm"
                               className="rounded-full"
-                              onClick={() => handleOpenDialog(manuscript)}
+                              asChild
                             >
-                              Review & assign
+                              <Link href={`/editor/manuscript/${manuscript.id}`}>
+                                Review & assign
+                              </Link>
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -500,197 +354,6 @@ export default function EditorDashboard() {
         </div>
       </section>
 
-      <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
-        <DialogContent className="w-[min(96vw,1120px)] max-w-5xl border-slate-200 bg-white p-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-lg bg-slate-950 px-6 py-4 text-white">
-            <DialogTitle className="text-base font-semibold">
-              Editorial review
-            </DialogTitle>
-            <span className="text-xs text-white/70">
-              {activeManuscript?.title || "Select a manuscript"}
-            </span>
-          </div>
-          <div className="space-y-6 px-6 py-5">
-            <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Submission details
-                  </p>
-                  <div className="mt-3 space-y-3 text-sm text-slate-700">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">Author</p>
-                      <p>{activeManuscript?.author?.name || "Not supplied"}</p>
-                      <p className="text-xs text-slate-500">
-                        {activeManuscript?.author?.email || "No email on record"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">Status</p>
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-                          activeStatusTone
-                        )}
-                      >
-                        {activeStatusLabel}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500">Updated</p>
-                      <p>{formatDate(activeManuscript?.updatedAt)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Current PDF
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Open the submitted PDF to review formatting before assigning.
-                  </p>
-                  {activeManuscript?.contentUrl ? (
-                    <Button asChild className="mt-4 rounded-full bg-slate-900">
-                      <a
-                        href={activeManuscript.contentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open submission PDF
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    </Button>
-                  ) : (
-                    <p className="mt-3 text-xs text-rose-600">
-                      No PDF has been attached yet.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Upload formatted PDF
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Replace the submission with a format-corrected PDF if needed.
-                  </p>
-                  <input
-                    id="formatted-pdf"
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(event) =>
-                      handleFormattedUpload(event.target.files?.[0] ?? null)
-                    }
-                    className="sr-only"
-                  />
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <Label
-                      htmlFor="formatted-pdf"
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                    >
-                      <UploadCloud className="h-4 w-4" />
-                      Upload PDF
-                    </Label>
-                    {formattedPdfName ? (
-                      <span className="text-xs text-slate-500">
-                        {formattedPdfName}
-                      </span>
-                    ) : null}
-                    {formattedPdfUrl ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        className="rounded-full border-slate-300"
-                      >
-                        <a href={formattedPdfUrl} target="_blank" rel="noreferrer">
-                          Preview formatted PDF
-                        </a>
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Select PDF to send
-                  </p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => setPreferredPdf("original")}
-                      className={cn(
-                        "rounded-2xl border px-4 py-3 text-left text-sm transition",
-                        preferredPdf === "original"
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white text-slate-700"
-                      )}
-                    >
-                      <p className="font-semibold">Original submission</p>
-                      <p className="text-xs opacity-80">
-                        Use the PDF provided by the author.
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreferredPdf("formatted")}
-                      disabled={!formattedPdfUrl}
-                      className={cn(
-                        "rounded-2xl border px-4 py-3 text-left text-sm transition",
-                        preferredPdf === "formatted"
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white text-slate-700",
-                        !formattedPdfUrl && "cursor-not-allowed opacity-60"
-                      )}
-                    >
-                      <p className="font-semibold">Formatted PDF</p>
-                      <p className="text-xs opacity-80">
-                        Use the editor-uploaded version.
-                      </p>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
-                    Assign reviewer
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="reviewer-id" className="text-xs">
-                        Reviewer ID
-                      </Label>
-                      <Input
-                        id="reviewer-id"
-                        value={reviewerId}
-                        onChange={(event) => setReviewerId(event.target.value)}
-                        placeholder="Paste reviewer user ID"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      className="w-full rounded-full bg-saffron-500 text-slate-900 hover:bg-saffron-400"
-                      onClick={handleSendToReviewer}
-                      disabled={actionStatus === "assigning"}
-                    >
-                      {actionStatus === "assigning"
-                        ? "Sending..."
-                        : "Send to reviewer"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {actionError ? (
-              <p className="text-sm font-semibold text-rose-600">{actionError}</p>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -21,12 +21,35 @@ const assignReviewer = async (manuscriptId, reviewerId) => {
   });
 };
 
-const submitReview = async (reviewId, content, decision) =>
-  Review.findByIdAndUpdate(
+const submitReview = async (reviewId, content, decision) => {
+  const review = await Review.findByIdAndUpdate(
     reviewId,
     { content, decision },
     { new: true }
   ).exec();
+
+  if (!review) {
+    throw new HttpError(404, 'Review not found');
+  }
+
+  // Map decision to manuscript status
+  const decisionStatusMap = {
+    ACCEPT: 'ACCEPTED',
+    REJECT: 'REJECTED',
+    REVISE: 'REVISION_REQUESTED',
+  };
+
+  const newStatus = decisionStatusMap[decision];
+  if (newStatus && review.manuscriptId) {
+    await Manuscript.findByIdAndUpdate(
+      review.manuscriptId,
+      { status: newStatus },
+      { new: true }
+    ).exec();
+  }
+
+  return review;
+};
 
 const findReviewsByReviewer = async (reviewerId) =>
   Review.find({ reviewerId })

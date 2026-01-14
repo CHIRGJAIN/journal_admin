@@ -5,6 +5,7 @@ const baseUrl = "https://trinixjournal.com";
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = [
     "/login",
+    "/register",
     "/author",
     "/editor",
     "/reviewer",

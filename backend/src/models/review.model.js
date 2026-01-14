@@ -3,8 +3,8 @@ const { applyBaseSchemaOptions } = require('./model-utils');
 
 const reviewSchema = new mongoose.Schema(
   {
-    content: { type: String, required: true },
-    decision: { type: String, required: true },
+    content: { type: String,},
+    decision: { type: String},
     manuscriptId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Manuscript',

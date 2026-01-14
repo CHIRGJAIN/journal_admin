@@ -35,6 +35,19 @@ class ReviewService {
     const res = await apiClient.patch<any>(`/reviews/${reviewId}/submit`, payload);
     return res?.data ?? res;
   }
+
+  async assignReviewer(manuscriptId: string, reviewerId: string): Promise<any> {
+    const res = await apiClient.post<any>('/reviews/assign', {
+      manuscriptId,
+      reviewerId,
+    });
+    return res?.data ?? res;
+  }
+
+  async getReviewsForManuscript(manuscriptId: string): Promise<ReviewRecord[]> {
+    const res = await apiClient.get<any>(`/reviews/manuscript/${manuscriptId}`);
+    return res?.data ?? res ?? [];
+  }
 }
 
 export const reviewService = new ReviewService();

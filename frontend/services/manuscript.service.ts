@@ -142,6 +142,13 @@ class ManuscriptService {
   async withdrawSubmission(id: string): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>(`/manuscripts/${id}/withdraw`, {});
   }
+
+  /**
+   * Update manuscript status
+   */
+  async updateManuscriptStatus(id: string, status: string): Promise<Manuscript> {
+    return apiClient.patch<Manuscript>(`/manuscripts/${id}/status`, { status });
+  }
 }
 
 export const manuscriptService = new ManuscriptService();

@@ -15,7 +15,7 @@ export default function SiteFooter() {
               <div>
                 <p className="font-display text-xl">{journalMeta.shortTitle}</p>
                 <p className="text-sm text-white/70">
-                  Trinix Journal of Advanced Engineering and Sciences
+                 Advance Ancient Knowledge and Wisdom Journal 
                 </p>
               </div>
             </div>
@@ -56,7 +56,7 @@ export default function SiteFooter() {
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/10 pt-6 text-xs text-white/60 md:flex-row md:items-center md:justify-between">
           <span>Copyright {new Date().getFullYear()} Trinix Pvt Ltd. All rights reserved.</span>
-          <span>{journalMeta.issnPrint} | {journalMeta.issnOnline}</span>
+          {/* <span>{journalMeta.issnPrint} | {journalMeta.issnOnline}</span> */}
         </div>
       </div>
     </footer>
