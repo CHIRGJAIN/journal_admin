@@ -38,4 +38,23 @@ const authenticate = (req, res, next) => {
   }
 };
 
-module.exports = { authenticate };
+const normalizeRoles = (roles) => {
+  if (!roles) return [];
+  if (Array.isArray(roles)) return roles;
+  if (typeof roles === 'string') return [roles];
+  return [];
+};
+
+const requireRoles = (allowedRoles = []) => (req, res, next) => {
+  const userRoles = normalizeRoles(req.user && (req.user.roles || req.user.role));
+  const allowed = allowedRoles.map((role) => role.toLowerCase());
+  const hasAccess = userRoles.some((role) => allowed.includes(String(role).toLowerCase()));
+
+  if (!hasAccess) {
+    return res.status(403).json({ statusCode: 403, message: 'Forbidden' });
+  }
+
+  return next();
+};
+
+module.exports = { authenticate, requireRoles };

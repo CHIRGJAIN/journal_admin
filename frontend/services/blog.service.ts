@@ -8,61 +8,76 @@ import { apiClient } from '@/lib/apiClient';
 export interface BlogPost {
   id: string;
   title: string;
-  slug: string;
-  content: string;
-  excerpt: string;
-  author: string;
-  highlight?: string;
-  published: boolean;
-  publishedAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  slug?: string;
+  description: string[];
+  category: string;
+  tags?: string[];
+  image?: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CreateBlogRequest {
   title: string;
   slug?: string;
-  content: string;
-  excerpt: string;
-  author: string;
-  highlight?: string;
-  published?: boolean;
+  description: string[];
+  category: string;
+  tags?: string[];
+  image?: string;
+  isActive?: boolean;
+}
+
+export interface BlogListResponse {
+  data: BlogPost[];
+  status?: boolean;
 }
 
 class BlogService {
   /**
    * Get all published blog posts
    */
-  async getAllPosts(page: number = 1, limit: number = 10): Promise<{ posts: BlogPost[] }> {
-    return apiClient.get<{ posts: BlogPost[] }>(`/blog?page=${page}&limit=${limit}`);
+  async getAllPosts(params?: { limit?: number; skip?: number; isActive?: boolean }): Promise<BlogListResponse> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.append('limit', params.limit.toString());
+    if (params?.skip) query.append('skip', params.skip.toString());
+    if (params?.isActive !== undefined) query.append('isActive', params.isActive.toString());
+    const endpoint = query.toString() ? `/blog?${query.toString()}` : '/blog';
+    const res = await apiClient.get<any>(endpoint);
+    const data = res && res.data ? res.data : res;
+    return { data: Array.isArray(data) ? data : [], status: res?.status };
   }
 
   /**
    * Get single blog post by slug
    */
   async getPostBySlug(slug: string): Promise<BlogPost> {
-    return apiClient.get<BlogPost>(`/blog/${slug}`);
+    const res = await apiClient.get<any>(`/blog/slug/${slug}`);
+    return res && res.data ? res.data : res;
   }
 
   /**
    * Create new blog post (admin only)
    */
   async createPost(payload: CreateBlogRequest): Promise<BlogPost> {
-    return apiClient.post<BlogPost>('/blog', payload);
+    const res = await apiClient.post<any>('/blog', payload);
+    return res && res.data ? res.data : res;
   }
 
   /**
    * Update blog post (admin only)
    */
   async updatePost(id: string, payload: Partial<CreateBlogRequest>): Promise<BlogPost> {
-    return apiClient.put<BlogPost>(`/blog/${id}`, payload);
+    const res = await apiClient.put<any>(`/blog/${id}`, payload);
+    return res && res.data ? res.data : res;
   }
 
   /**
    * Delete blog post (admin only)
    */
-  async deletePost(id: string): Promise<{ message: string }> {
-    return apiClient.delete<{ message: string }>(`/blog/${id}`);
+  async deletePost(id: string): Promise<BlogPost> {
+    const res = await apiClient.delete<any>(`/blog/${id}`);
+    return res && res.data ? res.data : res;
   }
 }
 

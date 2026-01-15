@@ -9,14 +9,47 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { contactService } from "@/services";
 
 export default function AuthorContactPage() {
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setNotice("Thanks. Your message has been saved in this session.");
+    if (status === "sending") return;
+
+    if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) {
+      setStatus("error");
+      setNotice("Please include your name, email, and message.");
+      return;
+    }
+
+    setStatus("sending");
+    setNotice("");
+
+    try {
+      await contactService.createMessage({
+        name: contactName.trim(),
+        email: contactEmail.trim(),
+        message: contactMessage.trim(),
+        source: "author-dashboard",
+      });
+      setStatus("success");
+      setNotice("Thanks. Your message has been sent to the publisher team.");
+      setContactMessage("");
+    } catch (error) {
+      setStatus("error");
+      setNotice("Unable to send your message right now. Please try again.");
+    }
   };
+
+  const noticeStyles = status === "success"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : "border-rose-200 bg-rose-50 text-rose-700";
 
   return (
     <div className="min-h-screen">
@@ -94,28 +127,43 @@ export default function AuthorContactPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="contact-name">Name</Label>
-                  <Input id="contact-name" placeholder="Your name" />
+                  <Input
+                    id="contact-name"
+                    value={contactName}
+                    onChange={(event) => setContactName(event.target.value)}
+                    placeholder="Your name"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contact-email">Email</Label>
-                  <Input id="contact-email" type="email" placeholder="you@example.com" />
+                  <Input
+                    id="contact-email"
+                    type="email"
+                    value={contactEmail}
+                    onChange={(event) => setContactEmail(event.target.value)}
+                    placeholder="you@example.com"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contact-message">Message</Label>
                   <Textarea
                     id="contact-message"
                     rows={4}
+                    value={contactMessage}
+                    onChange={(event) => setContactMessage(event.target.value)}
                     placeholder="Describe your question or issue."
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button type="submit" className="rounded-full">
-                    Send message
+                  <Button type="submit" className="rounded-full" disabled={status === "sending"}>
+                    {status === "sending" ? "Sending..." : "Send message"}
                   </Button>
-                  {notice ? (
-                    <span className="text-xs text-slate-500">{notice}</span>
-                  ) : null}
                 </div>
+                {notice ? (
+                  <div className={`rounded-2xl border px-3 py-2 text-xs ${noticeStyles}`}>
+                    {notice}
+                  </div>
+                ) : null}
               </form>
             </CardContent>
           </Card>

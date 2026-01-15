@@ -63,21 +63,31 @@ class IssueService {
     if (params?.status) query.append('status', params.status);
 
     const endpoint = query.toString() ? `/issues?${query.toString()}` : '/issues';
-    return apiClient.get<GetIssuesResponse>(endpoint);
+    const res = await apiClient.get<any>(endpoint);
+    return {
+      status: res?.status,
+      data: res?.data ?? res?.issues ?? [],
+      total: res?.meta?.total ?? res?.total ?? 0,
+      page: res?.meta?.page ?? res?.page ?? 1,
+      limit: res?.meta?.limit ?? res?.limit ?? 10,
+      totalPages: res?.meta?.totalPages ?? res?.totalPages,
+    };
   }
 
   /**
    * Get single issue by ID
    */
   async getIssue(id: string): Promise<Issue> {
-    return apiClient.get<Issue>(`/issues/${id}`);
+    const res = await apiClient.get<any>(`/issues/${id}`);
+    return res && res.data ? res.data : res;
   }
 
   /**
    * Get latest issue
    */
   async getLatestIssue(): Promise<Issue> {
-    return apiClient.get<Issue>('/issues/latest');
+    const res = await apiClient.get<any>('/issues/latest');
+    return res && res.data ? res.data : res;
   }
 
   /**
@@ -99,6 +109,30 @@ class IssueService {
    */
   async getFeaturedManuscripts(): Promise<any> {
     return apiClient.get<any>('/issues/featured-manuscripts');
+  }
+
+  /**
+   * Create a new issue
+   */
+  async createIssue(payload: Partial<Issue>): Promise<Issue> {
+    const res = await apiClient.post<any>('/issues/create', payload);
+    return res && res.data ? res.data : res;
+  }
+
+  /**
+   * Assign a manuscript to an issue
+   */
+  async addManuscript(issueId: string, manuscriptId: string): Promise<Issue> {
+    const res = await apiClient.patch<any>(`/issues/${issueId}/add-manuscript`, { manuscriptId });
+    return res && res.data ? res.data : res;
+  }
+
+  /**
+   * Remove a manuscript from an issue
+   */
+  async removeManuscript(issueId: string, manuscriptId: string): Promise<Issue> {
+    const res = await apiClient.patch<any>(`/issues/${issueId}/remove-manuscript`, { manuscriptId });
+    return res && res.data ? res.data : res;
   }
 }
 

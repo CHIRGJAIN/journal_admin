@@ -1,29 +1,29 @@
 const express = require('express');
 const editorialBoardController = require('../controllers/editorialBoard.controller');
-const { authenticate } = require('../middleware/auth');
-const { authorizeRoles } = require('../middleware/authorize');
+const { authenticate, requireRoles } = require('../middleware/auth');
 const { asyncHandler } = require('../utils/async-handler');
+
 const router = express.Router();
 
 router.post(
-  '/create',
+  '/',
   authenticate,
-  authorizeRoles('publisher', 'admin'),
-  asyncHandler(editorialBoardController.createEditorialBoard)
+  requireRoles(['publisher', 'admin']),
+  asyncHandler(editorialBoardController.createMember)
 );
-router.get('/', asyncHandler(editorialBoardController.getEditorialBoards));
-router.get('/:id', asyncHandler(editorialBoardController.getEditorialBoard));
+router.get('/', asyncHandler(editorialBoardController.getMembers));
+router.get('/:id', asyncHandler(editorialBoardController.getMember));
 router.put(
-  '/update/:id',
+  '/:id',
   authenticate,
-  authorizeRoles('publisher', 'admin'),
-  asyncHandler(editorialBoardController.updateEditorialBoard)
+  requireRoles(['publisher', 'admin']),
+  asyncHandler(editorialBoardController.updateMember)
 );
 router.delete(
   '/:id',
   authenticate,
-  authorizeRoles('publisher', 'admin'),
-  asyncHandler(editorialBoardController.deleteEditorialBoard)
+  requireRoles(['publisher', 'admin']),
+  asyncHandler(editorialBoardController.deleteMember)
 );
 
 module.exports = router;
